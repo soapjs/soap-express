@@ -1,5 +1,6 @@
 import * as Soap from "@soapjs/soap";
 import { Express, Router } from "express";
+import { ExpressRouteHandler } from "./express-route-handler";
 
 /**
  * Represents an Express router with versioning and middleware support.
@@ -30,6 +31,9 @@ export class ExpressRouter<ContainerType = any> extends Soap.Router {
     const { options } = route;
     const middlewares = [];
     const method = route.method.toLowerCase();
+    // TODO: refactor
+    const routeHandler = ExpressRouteHandler.create(route);
+    const handlerTrigger = routeHandler.exec.bind(routeHandler);
 
     if (!this.router[method]) {
       throw new Soap.UnsupportedHttpMethodError(method);
@@ -90,10 +94,10 @@ export class ExpressRouter<ContainerType = any> extends Soap.Router {
 
     if (Array.isArray(route.path)) {
       route.path.forEach((path) => {
-        this.router[method](path, middlewares, route.handler);
+        this.router[method](path, middlewares, handlerTrigger);
       });
     } else if (typeof route.path === "string") {
-      this.router[method](route.path, middlewares, route.handler);
+      this.router[method](route.path, middlewares, handlerTrigger);
     } else {
       throw new Soap.InvalidRoutePathError(route.path);
     }

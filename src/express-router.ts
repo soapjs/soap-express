@@ -29,9 +29,10 @@ export class ExpressRouter<ContainerType = any> extends Soap.Router {
     const { registry } = this;
     const { options } = route;
     const middlewares = [];
+    const method = route.method.toLowerCase();
 
-    if (!this.router[route.method]) {
-      throw new Soap.UnsupportedHttpMethodError(route.method);
+    if (!this.router[method]) {
+      throw new Soap.UnsupportedHttpMethodError(method);
     }
 
     if (options?.cors && registry.has("cors")) {
@@ -89,14 +90,14 @@ export class ExpressRouter<ContainerType = any> extends Soap.Router {
 
     if (Array.isArray(route.path)) {
       route.path.forEach((path) => {
-        this.router[route.method](
+        this.router[method](
           `${this.versionPath}${path}`.replace(/\/+/g, "/"),
           middlewares,
           route.handler
         );
       });
     } else if (typeof route.path === "string") {
-      this.router[route.method](
+      this.router[method](
         `${this.versionPath}${route.path}`.replace(/\/+/g, "/"),
         middlewares,
         route.handler

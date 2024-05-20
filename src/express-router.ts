@@ -90,18 +90,10 @@ export class ExpressRouter<ContainerType = any> extends Soap.Router {
 
     if (Array.isArray(route.path)) {
       route.path.forEach((path) => {
-        this.router[method](
-          `${this.versionPath}${path}`.replace(/\/+/g, "/"),
-          middlewares,
-          route.handler
-        );
+        this.router[method](path, middlewares, route.handler);
       });
     } else if (typeof route.path === "string") {
-      this.router[method](
-        `${this.versionPath}${route.path}`.replace(/\/+/g, "/"),
-        middlewares,
-        route.handler
-      );
+      this.router[method](route.path, middlewares, route.handler);
     } else {
       throw new Soap.InvalidRoutePathError(route.path);
     }

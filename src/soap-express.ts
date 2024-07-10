@@ -2,11 +2,13 @@ import { session } from "express-session";
 import * as Soap from "@soapjs/soap";
 import * as http from "http";
 import express, * as e from "express";
+import expressListEndpoints from "express-list-endpoints";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import compression from "compression";
 import { ExpressRouter } from "./express-router";
+import { ExpressMiddleware } from "./express-middleware";
 
 export class SoapExpress {
   /**
@@ -28,7 +30,7 @@ export class SoapExpress {
     dependencies: Soap.Dependencies,
     router: ExpressRouter,
     options?: {
-      auth?: Soap.AuthModule;
+      auth?: Soap.ApiAuthModule;
       logger?: Soap.Logger;
       middlewares?: Soap.AnyFunction[];
       errorHandler?: Soap.ErrorHandler;
@@ -48,7 +50,7 @@ export class SoapExpress {
     try {
       await dependencies.configure(config);
 
-      const middlewares = new Soap.MiddlewareRegistry();
+      const middlewares = new Soap.MiddlewareRegistry(_logger);
       const app = express();
 
       app.use(express.json(config?.json));
@@ -59,40 +61,80 @@ export class SoapExpress {
 
       if (config?.cors) {
         app.use(cors(config.cors));
-        middlewares.set("cors", cors);
+        middlewares.add(
+          new ExpressMiddleware(Soap.MiddlewareType.Cors, true, null, cors)
+        );
       }
 
       if (config?.security) {
         app.use(helmet(config.security));
-        middlewares.set("security", helmet);
+        middlewares.add(
+          new ExpressMiddleware(
+            Soap.MiddlewareType.Security,
+            true,
+            null,
+            helmet
+          )
+        );
       }
 
       if (config?.rateLimit) {
         app.use(rateLimit(config.rateLimit));
-        middlewares.set("rate_limit", rateLimit);
+        middlewares.add(
+          new ExpressMiddleware(
+            Soap.MiddlewareType.RateLimit,
+            true,
+            null,
+            rateLimit
+          )
+        );
       }
 
       if (config?.compression) {
         app.use(compression(config.compression));
-        middlewares.set("compression", compression);
+        middlewares.add(
+          new ExpressMiddleware(
+            Soap.MiddlewareType.Compression,
+            true,
+            null,
+            compression
+          )
+        );
       }
 
       if (config?.session) {
         app.use(session(config.session));
-        middlewares.set("session", session);
+        middlewares.add(
+          new ExpressMiddleware(
+            Soap.MiddlewareType.Session,
+            true,
+            null,
+            session
+          )
+        );
+      }
+
+      if (config?.auth && options?.auth) {
+        const strategies = Object.keys(config.auth);
+        for (const name of strategies) {
+          const strategy = options.auth.getStrategy(name);
+          if (strategy) {
+            strategy.init();
+            middlewares.add(
+              strategy.middlewares.getMiddlewares({
+                onlyGlobal: true,
+              }),
+              true
+            );
+          }
+        }
       }
 
       if (options?.middlewares) {
         options.middlewares.forEach((middleware) => app.use(middleware));
       }
 
-      if (options?.auth?.strategies) {
-        options.auth.strategies.forEach((strategy) => {
-          strategy.initialize(app);
-        });
-      }
-
-      router.initialize(dependencies.container, config, app, middlewares);
+      router.initialize(app, middlewares);
       router.setupRoutes();
 
       if (options?.httpErrorHandler) {
@@ -109,8 +151,16 @@ export class SoapExpress {
         _errorHandler(err, req, res, next);
       });
 
-      const httpServer = app.listen(config.port, () => {
-        _logger.info(`Server is running on port ${config.port}`);
+      const port = config.port || 3000;
+
+      const httpServer = app.listen(port, () => {
+        if (!config.port) {
+          _logger.info(`No port specified, using default 3000`);
+        }
+
+        _logger.info(`Server is running on port ${port}`);
+
+        this.printEndpoints(app);
       });
 
       return {
@@ -121,5 +171,16 @@ export class SoapExpress {
     } catch (error) {
       _errorHandler(error);
     }
+  }
+
+  private static printEndpoints(app: e.Express) {
+    const endpoints = expressListEndpoints(app);
+    endpoints.forEach((endpoint) => {
+      console.log(
+        `${endpoint.methods[0]} ${
+          endpoint.path
+        } with middlewares: [${endpoint.middlewares.join(",")}]`
+      );
+    });
   }
 }

@@ -2,6 +2,12 @@ import * as Soap from "@soapjs/soap";
 import { Express, Router } from "express";
 import { ExpressRouter } from "../express-router";
 
+class ExpressRouterImpl extends ExpressRouter {
+  public setupRoutes(...args: unknown[]) {
+    throw new Error("Method not implemented.");
+  }
+}
+
 describe("ExpressRouter", () => {
   let app: Partial<Express>;
   let container: any;
@@ -14,40 +20,40 @@ describe("ExpressRouter", () => {
     };
     container = {};
     config = {} as Soap.Config;
-    registry = new Map();
+    registry = new Soap.MiddlewareRegistry(console as unknown as Soap.Logger);
   });
 
   describe("constructor", () => {
     it("should create an instance with version", () => {
-      const router = new ExpressRouter("1");
-      expect(router).toBeInstanceOf(ExpressRouter);
-      expect(router["versionPath"]).toBe("/v1");
+      const router = new ExpressRouterImpl("api", "v1");
+      expect(router).toBeInstanceOf(ExpressRouterImpl);
+      expect(router["prefix"]).toBe("api");
+      expect(router["version"]).toBe("v1");
     });
 
     it("should create an instance without version", () => {
-      const router = new ExpressRouter();
-      expect(router).toBeInstanceOf(ExpressRouter);
-      expect(router["versionPath"]).toBe("");
+      const router = new ExpressRouterImpl(null, null);
+      expect(router).toBeInstanceOf(ExpressRouterImpl);
+      expect(router["prefix"]).toBeFalsy();
+      expect(router["version"]).toBeFalsy();
     });
   });
 
   describe("initialize", () => {
     it("should initialize the router with required components", () => {
-      const router = new ExpressRouter();
-      router.initialize(container, config, app as Express, registry);
+      const router = new ExpressRouterImpl(null, null);
+      router.initialize(app as Express, registry);
 
-      expect(router["container"]).toBe(container);
-      expect(router["config"]).toBe(config);
       expect(router["registry"]).toBe(registry);
       expect(router["router"]).not.toBeNull();
       expect(app.use).toHaveBeenCalledWith("/", router["router"]);
     });
 
     it("should initialize the router with version path", () => {
-      const router = new ExpressRouter("1");
-      router.initialize(container, config, app as Express, registry);
+      const router = new ExpressRouterImpl("api", "v1");
+      router.initialize(app as Express, registry);
 
-      expect(app.use).toHaveBeenCalledWith("/v1", router["router"]);
+      expect(app.use).toHaveBeenCalledWith("/api/v1", router["router"]);
     });
   });
 
@@ -56,8 +62,8 @@ describe("ExpressRouter", () => {
     let route: Soap.Route;
 
     beforeEach(() => {
-      router = new ExpressRouter();
-      router.initialize(container, config, app as Express, registry);
+      router = new ExpressRouterImpl(null, null);
+      router.initialize(app as Express, registry);
 
       route = {
         method: "get",
@@ -94,54 +100,6 @@ describe("ExpressRouter", () => {
         Soap.InvalidRoutePathError
       );
     });
-
-    it("should mount a route with middlewares", () => {
-      registry.set(
-        "cors",
-        jest.fn(() => jest.fn())
-      );
-      registry.set(
-        "compression",
-        jest.fn(() => jest.fn())
-      );
-      registry.set(
-        "rate_limit",
-        jest.fn(() => jest.fn())
-      );
-      registry.set(
-        "session",
-        jest.fn(() => jest.fn())
-      );
-      registry.set(
-        "security",
-        jest.fn(() => jest.fn())
-      );
-      registry.set(
-        "validation",
-        jest.fn(() => jest.fn())
-      );
-      registry.set(
-        "authenticated_only",
-        jest.fn(() => jest.fn())
-      );
-      registry.set(
-        "authorized_only",
-        jest.fn(() => jest.fn())
-      );
-      registry.set(
-        "non_authenticated_only",
-        jest.fn(() => jest.fn())
-      );
-      registry.set(
-        "self_only",
-        jest.fn(() => jest.fn())
-      );
-
-      const spyRouterMethod = jest.spyOn(router["router"], "get");
-      router["mountRoute"](route);
-
-      expect(spyRouterMethod).toHaveBeenCalled();
-    });
   });
 
   describe("mount", () => {
@@ -150,8 +108,8 @@ describe("ExpressRouter", () => {
     let multipleRoutes: Soap.Route[];
 
     beforeEach(() => {
-      router = new ExpressRouter();
-      router.initialize(container, config, app as Express, registry);
+      router = new ExpressRouterImpl(null, null);
+      router.initialize(app as Express, registry);
 
       singleRoute = {
         method: "get",
@@ -192,8 +150,76 @@ describe("ExpressRouter", () => {
 
   describe("setupRoutes", () => {
     it("should throw NotImplementedError", () => {
-      const router = new ExpressRouter();
-      expect(() => router.setupRoutes()).toThrow(Soap.NotImplementedError);
+      const router = new ExpressRouterImpl(null, null);
+      expect(() => router.setupRoutes()).toThrow(Error);
     });
+  });
+});
+
+describe("createRootPath", () => {
+  it("should create root path with prefix and version", () => {
+    const rootPath = new ExpressRouterImpl(null, null)["createRootPath"](
+      "api",
+      "v1"
+    );
+    expect(rootPath).toBe("/api/v1");
+  });
+
+  it("should create root path with only prefix", () => {
+    const rootPath = new ExpressRouterImpl(null, null)["createRootPath"]("api");
+    expect(rootPath).toBe("/api");
+  });
+
+  it("should create root path with only version", () => {
+    const rootPath = new ExpressRouterImpl(null, null)["createRootPath"](
+      undefined,
+      "v1"
+    );
+    expect(rootPath).toBe("/v1");
+  });
+
+  it("should create root path with no prefix and version", () => {
+    const rootPath = new ExpressRouterImpl(null, null)["createRootPath"]();
+    expect(rootPath).toBe("/");
+  });
+
+  it("should handle leading and trailing slashes in prefix", () => {
+    const rootPath = new ExpressRouterImpl(null, null)["createRootPath"](
+      "/api/",
+      "v1"
+    );
+    expect(rootPath).toBe("/api/v1");
+  });
+
+  it("should handle leading and trailing slashes in version", () => {
+    const rootPath = new ExpressRouterImpl(null, null)["createRootPath"](
+      "api",
+      "/v1/"
+    );
+    expect(rootPath).toBe("/api/v1");
+  });
+
+  it("should handle leading and trailing slashes in both prefix and version", () => {
+    const rootPath = new ExpressRouterImpl(null, null)["createRootPath"](
+      "//api//",
+      "/v1//"
+    );
+    expect(rootPath).toBe("/api/v1");
+  });
+
+  it("should handle only slashes in prefix and version", () => {
+    const rootPath = new ExpressRouterImpl(null, null)["createRootPath"](
+      "///",
+      "///"
+    );
+    expect(rootPath).toBe("/");
+  });
+
+  it("should handle empty strings", () => {
+    const rootPath = new ExpressRouterImpl(null, null)["createRootPath"](
+      "",
+      ""
+    );
+    expect(rootPath).toBe("/");
   });
 });

@@ -86,8 +86,6 @@ describe("SoapExpress", () => {
       expect(dependencies.configure).toHaveBeenCalledWith(config);
       expect(express.json).toHaveBeenCalledWith(config.json);
       expect(router.initialize).toHaveBeenCalledWith(
-        dependencies.container,
-        config,
         expect.any(Object),
         expect.any(Soap.MiddlewareRegistry)
       );
@@ -111,26 +109,33 @@ describe("SoapExpress", () => {
       expect(rateLimit).toHaveBeenCalledWith(config.rateLimit);
       expect(compression).toHaveBeenCalledWith(config.compression);
       expect(session).toHaveBeenCalledWith(config.session);
-      expect(result.middlewares.get("cors")).toBe(cors);
-      expect(result.middlewares.get("security")).toBe(helmet);
-      expect(result.middlewares.get("rate_limit")).toBe(rateLimit);
-      expect(result.middlewares.get("compression")).toBe(compression);
-      expect(result.middlewares.get("session")).toBe(session);
+      expect(result.middlewares.get("cors").name).toBe("cors");
+      expect(result.middlewares.get("security").name).toBe("security");
+      expect(result.middlewares.get("rate_limit").name).toBe("rate_limit");
+      expect(result.middlewares.get("compression").name).toBe("compression");
+      expect(result.middlewares.get("session").name).toBe("session");
     });
 
     it("should initialize auth strategies if provided", async () => {
-      const authStrategy = {
-        initialize: jest.fn(),
+      const jwtOptions = { secretOrKey: "secret", validate: jest.fn() };
+      config.auth = { jwt: jwtOptions };
+      const strategy = {
+        name: "jwt",
+        init: jest.fn(),
+        middlewares: {
+          getMiddlewares: jest.fn(() => []),
+        },
       };
       const authModule = {
-        strategies: [authStrategy],
-      } as unknown as Soap.AuthModule;
+        strategies: new Map([["jwt", strategy]]),
+        getStrategy: (name) => strategy,
+      } as unknown as Soap.ApiAuthModule;
 
       await SoapExpress.bootstrap(config, dependencies, router, {
         auth: authModule,
       });
 
-      expect(authStrategy.initialize).toHaveBeenCalledWith(expect.any(Object));
+      expect(strategy.init).toHaveBeenCalled();
     });
 
     it("should use custom error handlers if provided", async () => {

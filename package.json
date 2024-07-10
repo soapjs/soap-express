@@ -1,6 +1,6 @@
 {
   "name": "@soapjs/soap-express",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "",
   "homepage": "https://docs.soapjs.com",
   "repository": "https://github.com/soapjs/soap-express",
@@ -23,7 +23,6 @@
     "@types/express-rate-limit": "^6.0.0",
     "@types/jest": "^27.0.3",
     "@types/node": "^18.7.14",
-    "cookie-parser": "^1.4.6",
     "express": "^4.0.0",
     "jest": "^27.4.5",
     "ts-jest": "^27.1.3",
@@ -36,6 +35,7 @@
   "dependencies": {
     "compression": "^1.7.4",
     "cors": "^2.8.5",
+    "cookie-parser": "^1.4.6",
     "express-list-endpoints": "^7.1.0",
     "express-rate-limit": "^7.2.0",
     "express-session": "^1.18.0",

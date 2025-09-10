@@ -337,7 +337,9 @@ class UserController {
 
 ### Using @CallUseCase
 
-The `@CallUseCase` decorator allows you to delegate route handling to a use case, keeping controllers clean:
+The `@CallUseCase` decorator allows you to delegate route handling to a use case, keeping controllers clean. **Important**: Use cases should follow Clean Architecture principles - they receive `input` and return `Result<output>`, never directly handle `Request` or `Response` objects.
+
+**Flow**: `Request` → `RouteIO.from()` → `UseCase.execute(input)` → `Result<output>` → `RouteIO.to()` → `Response`
 
 ```typescript
 import { CallUseCase } from '@soapjs/soap-express';
@@ -346,8 +348,8 @@ import { CallUseCase } from '@soapjs/soap-express';
 class GetUsersUseCase {
   constructor(@Inject('UserService') private userService: UserService) {}
 
-  async execute(input: any) {
-    return await this.userService.getUsers();
+  async execute(input: { page?: number; limit?: number }) {
+    return await this.userService.getUsers(input);
   }
 }
 
@@ -355,9 +357,19 @@ class GetUsersUseCase {
 class UserController {
   @Get('/')
   @CallUseCase(GetUsersUseCase)
+  @RouteIO({
+    from: (req: Request) => ({ page: req.query.page, limit: req.query.limit }),
+    to: (res: Response, result: any) => {
+      if (result.isSuccess()) {
+        res.json({ success: true, data: result.content });
+      } else {
+        res.status(500).json({ success: false, error: result.failure!.error.message });
+      }
+    }
+  })
   async getUsers() {
-    // This method body is ignored - GetUsersUseCase.execute() is called instead
-    // The use case receives the request data and returns the response
+    // Method body ignored - RouteIO transforms Request → input, 
+    // GetUsersUseCase.execute(input) → result, RouteIO transforms result → Response
   }
 }
 ```
@@ -420,40 +432,6 @@ async createUser() {
 }
 ```
 
-### Combining @CallUseCase with RouteIO
-
-```typescript
-@Injectable()
-class CreateUserUseCase {
-  constructor(@Inject('UserService') private userService: UserService) {}
-
-  async execute(input: { name: string; email: string }) {
-    // input is already transformed by RouteIO
-    return await this.userService.createUser(input);
-  }
-}
-
-@Controller('/api/users')
-class UserController {
-  @Post('/')
-  @CallUseCase(CreateUserUseCase)
-  @RouteIO({
-    from: (req: Request) => ({
-      name: req.body.name,
-      email: req.body.email
-    }),
-    to: (res: Response, result: any) => {
-      res.status(201).json({
-        success: true,
-        data: result
-      });
-    }
-  })
-  async createUser() {
-    // Method body ignored - use case handles everything
-  }
-}
-```
 
 ## Advanced Routing
 
@@ -612,9 +590,9 @@ async getUsers(req: Request, res: Response) {
 ```typescript
 @Injectable()
 class GetUsersUseCase {
-  async execute(input: any) {
+  async execute(input: { page?: number; limit?: number }) {
     try {
-      return await this.userService.getUsers();
+      return await this.userService.getUsers(input);
     } catch (error) {
       throw new Error(`Failed to get users: ${error.message}`);
     }
@@ -739,22 +717,30 @@ class UserController {
 
 ```typescript
 // ✅ Good: Use RouteIO for transformation
-@Post('/')
-@CallUseCase(CreateUserUseCase)
-@RouteIO({
-  from: (req: Request) => ({
-    name: req.body.name,
-    email: req.body.email.toLowerCase().trim()
-  }),
-  to: (res: Response, result: any) => {
-    res.status(201).json({
-      success: true,
-      data: result,
-      timestamp: new Date().toISOString()
-    });
-  }
-})
-async createUser() { }
+  @Post('/')
+  @CallUseCase(CreateUserUseCase)
+  @RouteIO({
+    from: (req: Request) => ({
+      name: req.body.name,
+      email: req.body.email.toLowerCase().trim()
+    }),
+    to: (res: Response, result: any) => {
+      if (result.isSuccess()) {
+        res.status(201).json({
+          success: true,
+          data: result.content,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          error: result.failure!.error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+  })
+  async createUser() { }
 ```
 
 ## API Reference

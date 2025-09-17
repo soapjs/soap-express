@@ -1,6 +1,6 @@
 # 🔌 Plugin System
 
-SoapExpress includes a powerful plugin system that allows you to easily extend functionality without modifying the core code.
+SoapExpress includes a powerful plugin system that allows you to easily extend functionality without modifying the core code. The plugin system is built on top of the `@soapjs/soap` framework's HTTP plugin architecture, providing seamless integration with Express.js.
 
 ## 📋 Table of Contents
 
@@ -28,9 +28,10 @@ The plugin system provides:
 ### Basic Plugin Structure
 
 ```typescript
-import { SoapExpressPlugin, SoapExpressApp } from '@soapjs/soap-express';
+import { HttpPlugin, HttpApp } from '@soapjs/soap';
+import { SoapExpressApp } from '@soapjs/soap-express';
 
-export class MyPlugin implements SoapExpressPlugin {
+export class MyPlugin implements HttpPlugin {
   readonly name = 'my-plugin';
   readonly version = '1.0.0';
   readonly description = 'My custom plugin';
@@ -38,27 +39,29 @@ export class MyPlugin implements SoapExpressPlugin {
   readonly category = 'utility';
   readonly tags = ['custom', 'utility'];
 
-  install(app: SoapExpressApp, options?: any): void {
+  install(app: HttpApp, options?: any): void {
     // Plugin installation logic
+    const expressApp = (app as SoapExpressApp).getApp();
+    // Add Express-specific middleware or routes
   }
 
-  uninstall?(app: SoapExpressApp): void {
+  uninstall?(app: HttpApp): void {
     // Plugin cleanup logic
   }
 
-  beforeStart?(app: SoapExpressApp): void {
+  beforeStart?(app: HttpApp): void {
     // Called before server starts
   }
 
-  afterStart?(app: SoapExpressApp): void {
+  afterStart?(app: HttpApp): void {
     // Called after server starts
   }
 
-  beforeStop?(app: SoapExpressApp): void {
+  beforeStop?(app: HttpApp): void {
     // Called before server stops
   }
 
-  afterStop?(app: SoapExpressApp): void {
+  afterStop?(app: HttpApp): void {
     // Called after server stops
   }
 }
@@ -137,15 +140,16 @@ The health check plugin includes these default checks:
 ### 1. Basic Plugin
 
 ```typescript
-import { SoapExpressPlugin, SoapExpressApp } from '@soapjs/soap-express';
+import { HttpPlugin, HttpApp } from '@soapjs/soap';
+import { SoapExpressApp } from '@soapjs/soap-express';
 
-export class LoggerPlugin implements SoapExpressPlugin {
+export class LoggerPlugin implements HttpPlugin {
   readonly name = 'logger';
   readonly version = '1.0.0';
   readonly description = 'Request logging plugin';
 
-  install(app: SoapExpressApp, options?: any): void {
-    const expressApp = app.getApp();
+  install(app: HttpApp, options?: any): void {
+    const expressApp = (app as SoapExpressApp).getApp();
     
     // Add logging middleware
     expressApp.use((req, res, next) => {
@@ -159,12 +163,15 @@ export class LoggerPlugin implements SoapExpressPlugin {
 ### 2. Plugin with Routes
 
 ```typescript
-export class ApiPlugin implements SoapExpressPlugin {
+import { HttpPlugin, HttpApp } from '@soapjs/soap';
+import { SoapExpressApp } from '@soapjs/soap-express';
+
+export class ApiPlugin implements HttpPlugin {
   readonly name = 'api';
   readonly version = '1.0.0';
 
-  install(app: SoapExpressApp, options?: any): void {
-    const expressApp = app.getApp();
+  install(app: HttpApp, options?: any): void {
+    const expressApp = (app as SoapExpressApp).getApp();
     
     // Add API routes
     expressApp.get('/api/status', (req, res) => {
@@ -177,12 +184,14 @@ export class ApiPlugin implements SoapExpressPlugin {
 ### 3. Plugin with Dependencies
 
 ```typescript
-export class DatabasePlugin implements SoapExpressPlugin {
+import { HttpPlugin, HttpApp } from '@soapjs/soap';
+
+export class DatabasePlugin implements HttpPlugin {
   readonly name = 'database';
   readonly version = '1.0.0';
   readonly dependencies = ['logger']; // Requires logger plugin
 
-  install(app: SoapExpressApp, options?: any): void {
+  install(app: HttpApp, options?: any): void {
     // Database setup logic
   }
 }
@@ -191,16 +200,21 @@ export class DatabasePlugin implements SoapExpressPlugin {
 ### 4. Plugin with Services
 
 ```typescript
-export class CachePlugin implements SoapExpressPlugin {
+import { HttpPlugin, HttpApp } from '@soapjs/soap';
+import { SoapExpressApp } from '@soapjs/soap-express';
+
+export class CachePlugin implements HttpPlugin {
   readonly name = 'cache';
   readonly version = '1.0.0';
 
-  install(app: SoapExpressApp, options?: any): void {
-    // Register cache service
-    app.registerService('cache', new CacheService(options));
+  install(app: HttpApp, options?: any): void {
+    const soapApp = app as SoapExpressApp;
+    
+    // Register cache service using new DI system
+    soapApp.registerValue('cache', new CacheService(options));
     
     // Add cache middleware
-    const expressApp = app.getApp();
+    const expressApp = soapApp.getApp();
     expressApp.use(this.cacheMiddleware);
   }
 
@@ -314,17 +328,18 @@ main().catch(console.error);
 ### Custom Plugin Example
 
 ```typescript
-import { SoapExpressPlugin, SoapExpressApp } from '@soapjs/soap-express';
+import { HttpPlugin, HttpApp } from '@soapjs/soap';
+import { SoapExpressApp } from '@soapjs/soap-express';
 
-export class MetricsPlugin implements SoapExpressPlugin {
+export class MetricsPlugin implements HttpPlugin {
   readonly name = 'metrics';
   readonly version = '1.0.0';
   readonly description = 'Application metrics collection';
 
   private metrics: Map<string, number> = new Map();
 
-  install(app: SoapExpressApp, options?: any): void {
-    const expressApp = app.getApp();
+  install(app: HttpApp, options?: any): void {
+    const expressApp = (app as SoapExpressApp).getApp();
     
     // Add metrics middleware
     expressApp.use((req, res, next) => {

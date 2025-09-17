@@ -1,6 +1,6 @@
 # 📚 Documentation System
 
-The `@soapjs/soap-express` framework includes a comprehensive documentation system that automatically generates API documentation from your decorators and code. This system is designed to be flexible, extensible, and easy to use.
+The `@soapjs/soap-express` framework includes a comprehensive documentation system that automatically generates API documentation from your decorators and code. This system is designed to be flexible, extensible, and easy to use, and is built on top of the `@soapjs/soap` framework's HTTP application architecture.
 
 ## Features
 

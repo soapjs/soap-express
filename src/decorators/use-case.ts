@@ -1,4 +1,5 @@
 import { DecoratorRegistry } from './registry';
+import { Injectable } from '@soapjs/soap';
 
 export function CallUseCase(useCaseClass: any) {
   return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
@@ -6,5 +7,12 @@ export function CallUseCase(useCaseClass: any) {
     if (metadata) {
       metadata.useCase = useCaseClass;
     }
+  };
+}
+
+export function UseCase() {
+  return function (target: any) {
+    // Automatically register use case as injectable
+    Injectable()(target);
   };
 }

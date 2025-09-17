@@ -7,65 +7,70 @@ import { ErrorHandler } from './error-handling/error-handler';
 import { 
   DIContainer, 
   container, 
-  registerClass as diRegisterClass, 
-  registerValue, 
-  registerFactory, 
+  Injectable,
   get, 
   has,
   RouteRegistry,
   RouteGroup,
   Route,
-  MiddlewareRegistry
+  MiddlewareRegistry,
+  HttpApp,
+  BaseHttpApp,
+  HttpPlugin,
+  PluginManager,
+  Router,
+  Middleware,
+  MiddlewareFunction,
+  Result,
+  Failure,
+  ConsoleLogger
 } from '@soapjs/soap';
 import { AuthRegistry, AuthMiddlewareFactory, AuthStrategy } from './auth';
-import { SoapMetricsCollector, MetricsConfig, MetricsMiddleware } from './metrics';
-import { MemoryMonitor, MemoryMonitoringConfig, MemoryMonitoringMiddleware } from './monitoring';
-import { SecurityMiddleware, SecurityConfig } from './security';
-import { SoapExpressPluginManager, SoapExpressPlugin, PluginConfig } from './plugins';
 
-export class SoapExpressApp {
+export class SoapExpressApp extends BaseHttpApp<Express> {
   private app: Express;
   private server: any;
-  private container: DIContainer;
   private routeBuilder: RouteBuilder;
   private errorHandler: ErrorHandler;
-  private routeRegistry: RouteRegistry;
-  private middlewareRegistry: MiddlewareRegistry;
   private authRegistry: AuthRegistry;
   private authMiddlewareFactory: AuthMiddlewareFactory;
-  private metricsCollector?: SoapMetricsCollector;
-  private metricsMiddleware?: MetricsMiddleware;
-  private memoryMonitor?: MemoryMonitor;
-  private memoryMiddleware?: MemoryMonitoringMiddleware;
-  private securityMiddleware?: SecurityMiddleware;
-  private pluginManager: SoapExpressPluginManager;
+  private logger: ConsoleLogger;
 
   constructor(options: SoapExpressOptions) {
+    // Create a simple router for BaseHttpApp
+    const router = {
+      initialize: () => router,
+      setupRoutes: () => {},
+      reloadRoutes: () => Promise.resolve(),
+      mount: () => router
+    } as Router;
+    
+    super(router);
+    
     this.app = express();
-    this.container = options.container || container;
     this.errorHandler = new ErrorHandler(options.errorHandler as any, options.errorHandlerOptions);
     this.routeBuilder = new RouteBuilder(this.app, this.container, this.errorHandler);
-    this.routeRegistry = new RouteRegistry();
-    this.middlewareRegistry = new MiddlewareRegistry();
     this.authRegistry = new AuthRegistry();
     this.authMiddlewareFactory = new AuthMiddlewareFactory(this.authRegistry);
-    this.pluginManager = new SoapExpressPluginManager();
-    
-    // Set app instance in plugin manager
-    this.pluginManager.setApp(this);
+    this.logger = new ConsoleLogger();
     
     // Register auth middleware factory in container
     this.container.bindValue('AuthMiddlewareFactory', this.authMiddlewareFactory);
     
+    this.initializeFramework();
     this.setupApp();
   }
 
-  private setupApp() {
-    // Basic middleware
+  // Abstract methods from BaseHttpApp
+  initializeFramework(): void {
+    // Initialize Express-specific framework components
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
-    
-    // Error handling will be added at the end after all routes
+  }
+
+  private setupApp() {
+    // Additional Express setup
+    this.logger.info('SoapExpressApp initialized');
   }
 
   // Controller registration
@@ -129,6 +134,11 @@ export class SoapExpressApp {
     return this.middlewareRegistry;
   }
 
+
+  getAuthMiddlewareFactory(): AuthMiddlewareFactory {
+    return this.authMiddlewareFactory;
+  }
+
   // Auth methods
   registerAuthStrategy(strategy: AuthStrategy) {
     this.authRegistry.register(strategy);
@@ -139,97 +149,9 @@ export class SoapExpressApp {
     return this.authRegistry;
   }
 
-  getAuthMiddlewareFactory(): AuthMiddlewareFactory {
-    return this.authMiddlewareFactory;
-  }
-
-  // Metrics methods
-  useMetrics(config: MetricsConfig) {
-    this.metricsCollector = new SoapMetricsCollector(config);
-    this.metricsMiddleware = new MetricsMiddleware(config);
-    
-    // Register metrics middleware
-    this.app.use(this.metricsMiddleware.middleware());
-    
-    return this;
-  }
-
-  getMetricsCollector(): SoapMetricsCollector | undefined {
-    return this.metricsCollector;
-  }
-
-  getMetricsMiddleware(): MetricsMiddleware | undefined {
-    return this.metricsMiddleware;
-  }
-
-  // Memory monitoring methods
-  useMemoryMonitoring(config: MemoryMonitoringConfig) {
-    this.memoryMonitor = new MemoryMonitor(config);
-    this.memoryMiddleware = new MemoryMonitoringMiddleware(config);
-    
-    // Register memory monitoring middleware
-    this.app.use(this.memoryMiddleware.middleware());
-    
-    return this;
-  }
-
-  getMemoryMonitor(): MemoryMonitor | undefined {
-    return this.memoryMonitor;
-  }
-
-  getMemoryMiddleware(): MemoryMonitoringMiddleware | undefined {
-    return this.memoryMiddleware;
-  }
-
-  // Security methods
-  useSecurity(config: SecurityConfig) {
-    this.securityMiddleware = new SecurityMiddleware(config);
-    
-    // Register security middleware
-    this.app.use(this.securityMiddleware.middleware());
-    
-    return this;
-  }
-
-  getSecurityMiddleware(): SecurityMiddleware | undefined {
-    return this.securityMiddleware;
-  }
-
-  // Plugin management methods
-  usePlugin(plugin: SoapExpressPlugin, options?: any): this {
-    this.pluginManager.usePlugin(plugin, options);
-    return this;
-  }
-
-  async loadPlugin(pluginName: string, options?: any): Promise<this> {
-    await this.pluginManager.loadPlugin(pluginName, options);
-    return this;
-  }
-
-  unloadPlugin(pluginName: string): this {
-    this.pluginManager.unloadPlugin(pluginName);
-    return this;
-  }
-
-  listPlugins(): SoapExpressPlugin[] {
-    return this.pluginManager.listPlugins();
-  }
-
-  getPlugin(pluginName: string): SoapExpressPlugin | undefined {
-    return this.pluginManager.getPlugin(pluginName);
-  }
-
-  isPluginLoaded(pluginName: string): boolean {
-    return this.pluginManager.isPluginLoaded(pluginName);
-  }
-
-  async loadPluginsFromDirectory(dir: string): Promise<this> {
-    await this.pluginManager.loadPluginsFromDirectory(dir);
-    return this;
-  }
-
-  getPluginManager(): SoapExpressPluginManager {
-    return this.pluginManager;
+  // Plugin management methods (using BaseHttpApp's plugin system)
+  usePlugin(plugin: HttpPlugin, options?: any): this {
+    return super.usePlugin(plugin, options);
   }
 
   private registerControllerMiddlewares(middlewares: any[]) {
@@ -244,39 +166,43 @@ export class SoapExpressApp {
   }
 
   // Start server
-  async start(port: number = 3000) {
-    // Call beforeStart hooks for all installed plugins
-    const installedPlugins = this.pluginManager.getInstalled();
-    for (const plugin of installedPlugins) {
-      if (plugin.beforeStart) {
-        plugin.beforeStart(this);
-      }
-    }
-
+  async start(port: number = 3000): Promise<void> {
+    await this.beforeStart();
+    
     // Add error handler at the end, after all routes
     // Express error middleware must have 4 parameters: (error, req, res, next)
     this.app.use((error: Error, req: Request, res: Response, next: NextFunction) => {
       this.errorHandler.handle(error, req, res);
     });
     
-    return new Promise<any>((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       this.server = createServer(this.app);
       this.server.listen(port, (error: any) => {
         if (error) {
           reject(error);
         } else {
-          console.log(`HTTP Server running on port ${port}`);
-          
-          // Call afterStart hooks for all installed plugins
-          for (const plugin of installedPlugins) {
-            if (plugin.afterStart) {
-              plugin.afterStart(this);
-            }
-          }
-          
-          resolve(this.server);
+          this.logger.info(`HTTP Server running on port ${port}`);
+          this.state = 'started';
+          this.afterStart().then(() => resolve());
         }
       });
+    });
+  }
+
+  // Stop server
+  async stop(): Promise<void> {
+    await this.beforeStop();
+    
+    return new Promise<void>((resolve) => {
+      if (this.server) {
+        this.server.close(() => {
+          this.logger.info('HTTP Server stopped');
+          this.state = 'stopped';
+          this.afterStop().then(() => resolve());
+        });
+      } else {
+        resolve();
+      }
     });
   }
 
@@ -299,36 +225,36 @@ export class SoapExpressApp {
 
   // Dependency Injection helpers
   registerService<T>(token: string, service: new (...args: any[]) => T) {
-    diRegisterClass(token, service);
+    this.container.bindClass(token, service);
     return this;
   }
 
   // New DI method using class as token
   registerClass<T>(service: new (...args: any[]) => T, token?: string | symbol) {
     if (token) {
-      diRegisterClass(service, token);
+      this.container.bindClass(token as string, service);
     } else {
-      diRegisterClass(service);
+      this.container.autoRegister(service);
     }
     return this;
   }
 
   registerValue<T>(token: string, value: T) {
-    registerValue(token, value);
+    this.container.bindValue(token, value);
     return this;
   }
 
   registerFactory<T>(token: string, factory: (...args: any[]) => T) {
-    registerFactory(token, factory);
+    this.container.bindFactory(token, factory);
     return this;
   }
 
   getService<T>(token: string): T {
-    return get<T>(token);
+    return this.container.get<T>(token);
   }
 
   hasService(token: string): boolean {
-    return has(token);
+    return this.container.has(token);
   }
 
   // Get container for advanced usage
@@ -338,36 +264,7 @@ export class SoapExpressApp {
 
   // Cleanup method
   destroy(): void {
-    // Call beforeStop hooks for all installed plugins
-    const installedPlugins = this.pluginManager.getInstalled();
-    for (const plugin of installedPlugins) {
-      if (plugin.beforeStop) {
-        plugin.beforeStop(this);
-      }
-    }
-
-    // Cleanup existing services
-    if (this.metricsMiddleware) {
-      this.metricsMiddleware.destroy();
-    }
-    if (this.metricsCollector) {
-      this.metricsCollector.destroy();
-    }
-    if (this.memoryMiddleware) {
-      this.memoryMiddleware.destroy();
-    }
-    if (this.memoryMonitor) {
-      this.memoryMonitor.destroy();
-    }
-    if (this.securityMiddleware) {
-      this.securityMiddleware.clearViolations();
-    }
-
-    // Call afterStop hooks for all installed plugins
-    for (const plugin of installedPlugins) {
-      if (plugin.afterStop) {
-        plugin.afterStop(this);
-      }
-    }
+    this.logger.info('SoapExpressApp destroying...');
+    // BaseHttpApp handles plugin lifecycle
   }
 }

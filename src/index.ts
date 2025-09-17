@@ -18,21 +18,6 @@ export * from './types';
 // Utils
 export * from './utils';
 
-// Auth
-export type { AuthUser, AuthRequest, AuthConfig, RoleConfig, AuthStrategy, SessionConfig } from './auth';
-export { AuthType, AuthRegistry, AuthMiddlewareFactory } from './auth';
-
-// Metrics
-export * from './metrics';
-
-// Monitoring
-export * from './monitoring';
-
-// Security
-export * from './security';
-
-// Plugins
-export * from './plugins';
 
 // Re-export @soapjs/soap infra/http and common components
 export {
@@ -64,6 +49,16 @@ export {
   MiddlewareType,
   AnyHandler,
   HandlerResult,
+  HttpRequest,
+  HttpResponse,
+  HttpContext,
+  AuthUser,
+  AuthRequest,
+  AuthType,
+  AuthStrategy,
+  AuthConfig,
+  RoleConfig,
+  SessionConfig,
   
   // Common components
   IO,
@@ -71,11 +66,23 @@ export {
   MiddlewareFunction,
   MiddlewareRegistry,
   MiddlewareTools,
+  Result,
+  Failure,
+  ConsoleLogger,
+  
+  // HTTP App components
+  HttpApp,
+  BaseHttpApp,
+  HttpPlugin,
+  PluginManager,
+  Router,
+  
+  // Dependency Injection
+  DIContainer,
+  Injectable,
+  Inject,
   
   // Validation
   ValidationMiddleware,
-  ValidationResult,
-  
-  // Dependency Injection namespace
-  DI
+  ValidationResult
 } from '@soapjs/soap';

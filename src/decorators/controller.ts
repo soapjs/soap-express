@@ -1,7 +1,5 @@
 import { DecoratorRegistry } from './registry';
-import { ControllerMetadata } from '../types';
-import { DI } from '@soapjs/soap';
-import { ApiDocOptions } from '../documentation/types';
+import { Injectable, ControllerMetadata } from '@soapjs/soap';
 
 export interface ControllerOptions {
   middlewares?: any[];
@@ -35,7 +33,7 @@ export function Controller(basePath: string, options?: ControllerOptions) {
     DecoratorRegistry.registerController(target, metadata);
     
     // Automatically register controller as injectable (like NestJS)
-    DI.registerClass(target);
+    Injectable()(target);
   };
 }
 

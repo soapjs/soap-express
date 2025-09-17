@@ -19,7 +19,7 @@ export function CommandHandlerDecorator<TCommand extends Command<TResult>, TResu
   return function (target: any) {
     // Register as injectable
     const token = options?.token || `CommandHandler:${commandType.name}`;
-    DI.registerClass(target, token, {
+    DI.bind(token).toClass(target, {
       scope: options?.scope || Scope.SINGLETON
     });
 

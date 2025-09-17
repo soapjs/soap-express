@@ -1,5 +1,5 @@
 import { DecoratorRegistry } from './registry';
-import { RouteMetadata } from '../types';
+import { RouteMetadata } from '@soapjs/soap';
 import { RouteAdditionalOptions } from '@soapjs/soap';
 
 export function Get(path: string, options?: RouteAdditionalOptions) {

@@ -19,7 +19,7 @@ export function QueryHandlerDecorator<TQuery extends Query<TResult>, TResult = u
   return function (target: any) {
     // Register as injectable
     const token = options?.token || `QueryHandler:${queryType.name}`;
-    DI.registerClass(target, token, {
+    DI.bind(token).toClass(target, {
       scope: options?.scope || Scope.SINGLETON
     });
 

@@ -4,10 +4,13 @@ import { DecoratorRegistry } from '../registry';
 import { DI } from '@soapjs/soap';
 
 // Mock DI
+const mockToClass = jest.fn();
 jest.mock('@soapjs/soap', () => ({
   ...jest.requireActual('@soapjs/soap'),
   DI: {
-    registerClass: jest.fn()
+    bind: jest.fn(() => ({
+      toClass: mockToClass
+    }))
   },
   Scope: {
     SINGLETON: 'singleton',
@@ -35,9 +38,9 @@ describe('Command Decorators - Simple Tests', () => {
         }
       }
 
-      expect(DI.registerClass).toHaveBeenCalledWith(
+      expect(DI.bind).toHaveBeenCalledWith('CommandHandler:TestCommand');
+      expect(mockToClass).toHaveBeenCalledWith(
         TestCommandHandler,
-        'CommandHandler:TestCommand',
         { scope: Scope.SINGLETON }
       );
 
@@ -97,9 +100,9 @@ describe('Command Decorators - Simple Tests', () => {
         }
       }
 
-      expect(DI.registerClass).toHaveBeenCalledWith(
+      expect(DI.bind).toHaveBeenCalledWith('CustomTestCommandHandler');
+      expect(mockToClass).toHaveBeenCalledWith(
         TestCommandHandler,
-        'CustomTestCommandHandler',
         { scope: Scope.TRANSIENT }
       );
 
@@ -128,9 +131,9 @@ describe('Command Decorators - Simple Tests', () => {
         }
       }
 
-      expect(DI.registerClass).toHaveBeenCalledWith(
+      expect(DI.bind).toHaveBeenCalledWith('RequestTestCommandHandler');
+      expect(mockToClass).toHaveBeenCalledWith(
         TestCommandHandler,
-        'RequestTestCommandHandler',
         { scope: Scope.REQUEST }
       );
 

@@ -4,10 +4,13 @@ import { DecoratorRegistry } from '../registry';
 import { DI } from '@soapjs/soap';
 
 // Mock DI
+const mockToClass = jest.fn();
 jest.mock('@soapjs/soap', () => ({
   ...jest.requireActual('@soapjs/soap'),
   DI: {
-    registerClass: jest.fn()
+    bind: jest.fn(() => ({
+      toClass: mockToClass
+    }))
   },
   Scope: {
     SINGLETON: 'singleton',
@@ -35,9 +38,9 @@ describe('Event Decorators - Simple Tests', () => {
         }
       }
 
-      expect(DI.registerClass).toHaveBeenCalledWith(
+      expect(DI.bind).toHaveBeenCalledWith('EventHandler:TestEvent');
+      expect(mockToClass).toHaveBeenCalledWith(
         TestEventHandler,
-        'EventHandler:TestEvent',
         { scope: Scope.SINGLETON }
       );
 
@@ -66,9 +69,9 @@ describe('Event Decorators - Simple Tests', () => {
         }
       }
 
-      expect(DI.registerClass).toHaveBeenCalledWith(
+      expect(DI.bind).toHaveBeenCalledWith('CustomTestEventHandler');
+      expect(mockToClass).toHaveBeenCalledWith(
         TestEventHandler,
-        'CustomTestEventHandler',
         { scope: Scope.TRANSIENT }
       );
 
@@ -97,9 +100,9 @@ describe('Event Decorators - Simple Tests', () => {
         }
       }
 
-      expect(DI.registerClass).toHaveBeenCalledWith(
+      expect(DI.bind).toHaveBeenCalledWith('RequestTestEventHandler');
+      expect(mockToClass).toHaveBeenCalledWith(
         TestEventHandler,
-        'RequestTestEventHandler',
         { scope: Scope.REQUEST }
       );
 

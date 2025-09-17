@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { RequestMethod, DIContainer, IO, RouteAdditionalOptions } from '@soapjs/soap';
+import { RequestMethod, DIContainer, IO, RouteAdditionalOptions, HttpApp, HttpPlugin } from '@soapjs/soap';
 
 // Express-specific IO interface that maps to @soapjs/soap IO
 export interface ExpressIO<I = unknown, O = unknown> extends IO<I, O> {
@@ -38,46 +38,6 @@ export interface SoapExpressOptions {
   metrics?: any;
   memoryMonitoring?: any;
   security?: any;
-}
-
-export interface RouteMetadata {
-  method: RequestMethod;
-  path: string;
-  middlewares: MiddlewareMetadata[];
-  useCase?: any;
-  routeIO?: ExpressIO;
-  handler?: RouteHandler;
-  options?: RouteAdditionalOptions;
-}
-
-export interface MiddlewareMetadata {
-  type: string;
-  options: any;
-  order: number;
-  middleware?: any;
-}
-
-export interface ControllerMetadata {
-  basePath: string;
-  middlewares: MiddlewareMetadata[];
-  type?: 'http' | 'websocket';
-  options?: {
-    apiDoc?: {
-      tags?: string[];
-      description?: string;
-      externalDocs?: {
-        description?: string;
-        url: string;
-      };
-      responses?: Record<string, any>;
-      parameters?: any[];
-      summary?: string;
-      deprecated?: boolean;
-      operationId?: string;
-      examples?: Record<string, any>;
-      security?: any[];
-    };
-  };
 }
 
 export type RouteHandler = (req: Request, res: Response) => Promise<any> | any;

@@ -455,17 +455,29 @@ class CreateUserHandler implements CommandHandler<CreateUserCommand, string> {
   // ...
 }
 
-// Register manually
+// Register manually with old DI system
 DI.registerClass(CreateUserHandler, 'CommandHandler:CreateUserCommand');
 commandBus.register(CreateUserCommand, new CreateUserHandler(/* deps */));
 
-// After (With Decorators)
+// After (With Decorators and new DI system)
 @CommandDecorator(CreateUserCommand)
 class CreateUserHandler implements CommandHandler<CreateUserCommand, string> {
   // ...
 }
 
-// Automatic registration!
+// Automatic registration using DI.bind().toClass()!
 ```
 
-The decorators handle all the registration automatically, making your code cleaner and more maintainable.
+## New DI System Integration
+
+The CQRS decorators now use the new `@soapjs/soap` DI system:
+
+```typescript
+// Old way (deprecated)
+DI.registerClass(handler, token, { scope: Scope.SINGLETON });
+
+// New way (automatic with decorators)
+DI.bind(token).toClass(handler, { scope: Scope.SINGLETON });
+```
+
+The decorators automatically handle the new DI registration pattern, making your code cleaner and more maintainable.

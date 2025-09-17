@@ -1,6 +1,6 @@
 # @soapjs/soap-express
 
-HTTP-focused Express.js integration for the @soapjs/soap framework with dependency injection support, authentication, and advanced routing capabilities.
+HTTP-focused Express.js integration for the @soapjs/soap framework 0.6.5+ with modern dependency injection, authentication, and advanced routing capabilities.
 
 ## Table of Contents
 
@@ -22,7 +22,7 @@ HTTP-focused Express.js integration for the @soapjs/soap framework with dependen
 ## Features
 
 - 🚀 **HTTP-Only Focus**: Clean separation from WebSocket functionality
-- 🔧 **Dependency Injection**: Full integration with @soapjs/soap DI container
+- 🔧 **Modern DI System**: Full integration with @soapjs/soap 0.6.5+ DI container
 - 🎯 **Decorator-Based**: Clean, declarative API using decorators
 - 🛡️ **Type Safety**: Full TypeScript support
 - 🔐 **Authentication**: Built-in auth decorators and middleware factory
@@ -30,6 +30,8 @@ HTTP-focused Express.js integration for the @soapjs/soap framework with dependen
 - 🔄 **RouteIO**: Request/response transformation system
 - ⚡ **Express Integration**: Seamless integration with Express.js
 - 🎨 **Flexible Architecture**: Use DI with decorators or direct container access
+- 🔌 **Plugin System**: Extensible plugin architecture
+- 📚 **Auto Documentation**: Automatic API documentation generation
 
 ## Installation
 
@@ -41,7 +43,7 @@ npm install @soapjs/soap-express @soapjs/soap express
 
 ```typescript
 import { SoapExpressApp, Controller, Get } from '@soapjs/soap-express';
-import { container, registerClass, Injectable, Inject } from '@soapjs/soap';
+import { DI, Injectable, Inject } from '@soapjs/soap';
 
 // Service with dependency injection
 @Injectable()
@@ -63,11 +65,10 @@ class UserController {
   }
 }
 
-// App setup
-const app = new SoapExpressApp({ container });
-registerClass('UserService', UserService);
+// App setup with new DI system
+const app = new SoapExpressApp();
+DI.bind('UserService').toClass(UserService);
 app.registerController(UserController);
-app.healthCheck();
 
 await app.start(3000);
 ```
@@ -181,6 +182,8 @@ async getUsers(req: Request, res: Response) {
 
 ## Dependency Injection
 
+The framework integrates with the @soapjs/soap 0.6.5+ DI container, providing modern dependency resolution and injection with the new `DI.bind().toClass()` API.
+
 ### Using Decorators (Recommended)
 
 ```typescript
@@ -215,46 +218,49 @@ class UserController {
   }
 }
 
-// Registration
-registerClass('UserService', UserService);
-registerClass('EmailService', EmailService);
+// Registration using new DI system
+DI.bind('UserService').toClass(UserService);
+DI.bind('EmailService').toClass(EmailService);
 ```
 
 ### Using Container Directly
 
 ```typescript
-import { container } from '@soapjs/soap';
+import { DI } from '@soapjs/soap';
 
 @Controller('/api/users')
 class UserController {
   @Get('/')
   async getUsers(req: Request, res: Response) {
-    const userService = container.get('UserService');
+    const userService = DI.get('UserService');
     const users = await userService.getUsers();
     res.json(users);
   }
 }
 
-// Registration
-container.bindClass('UserService', UserService);
-container.bindValue('config', { apiKey: 'secret' });
-container.bindFactory('logger', () => new Logger());
+// Registration using new DI system
+DI.bind('UserService').toClass(UserService);
+DI.bind('config').toValue({ apiKey: 'secret' });
+DI.bind('logger').toFactory(() => new Logger());
 ```
 
 ### Service Registration Methods
 
 ```typescript
-// Class registration
-registerClass('UserService', UserService);
-container.bindClass('UserService', UserService);
+// Class registration (new DI system)
+DI.bind('UserService').toClass(UserService);
 
 // Value registration
-registerValue('config', { apiKey: 'secret' });
-container.bindValue('config', { apiKey: 'secret' });
+DI.bind('config').toValue({ apiKey: 'secret' });
 
 // Factory registration
-registerFactory('logger', () => new Logger());
-container.bindFactory('logger', () => new Logger());
+DI.bind('logger').toFactory(() => new Logger());
+
+// Interface binding
+DI.bind('IUserRepository').toInterface(UserRepository);
+
+// Abstract binding
+DI.bind('BaseService').toAbstract(UserService);
 ```
 
 ## Authentication & Authorization
@@ -873,14 +879,32 @@ interface RouteAdditionalOptions {
 - WebSocket support (moved to @soapjs/soap-node-socket)
 - Socket.IO integration
 - WebSocket decorators and controllers
+- Old DI system (`DI.registerClass`, `DI.registerValue`, etc.)
 
-#### New Features
-- Enhanced dependency injection integration
-- Improved type safety
-- Better error handling
-- HTTP-only focus for better performance
-- Auth decorators and middleware factory
-- Advanced routing with @soapjs/soap Route system
+#### New Features in 0.6.5+
+- **Modern DI System**: New `DI.bind().toClass()` API
+- **Plugin System**: Extensible plugin architecture
+- **CQRS Decorators**: Command, Query, Event handlers
+- **Auto Documentation**: Automatic API documentation generation
+- **Enhanced Type Safety**: Full TypeScript support
+- **Better Error Handling**: Improved error management
+- **HTTP-only Focus**: Better performance
+- **Auth Decorators**: Built-in authentication
+- **Advanced Routing**: @soapjs/soap Route system integration
+
+### DI System Migration
+
+```typescript
+// Old way (deprecated)
+DI.registerClass(UserService, 'UserService', { scope: Scope.SINGLETON });
+DI.registerValue('API_KEY', 'your-api-key');
+DI.registerFactory('Database', () => new Database());
+
+// New way (0.6.5+)
+DI.bind('UserService').toClass(UserService, { scope: Scope.SINGLETON });
+DI.bind('API_KEY').toValue('your-api-key');
+DI.bind('Database').toFactory(() => new Database());
+```
 
 #### Breaking Changes
 - `SoapExpressOptions.container` is now optional (uses global container by default)

@@ -26,7 +26,7 @@ export function EventHandler<TEvent extends DomainEvent>(
   return function (target: any) {
     // Register as injectable
     const token = options?.token || `EventHandler:${eventType.name}`;
-    DI.registerClass(target, token, {
+    DI.bind(token).toClass(target, {
       scope: options?.scope || Scope.SINGLETON
     });
 

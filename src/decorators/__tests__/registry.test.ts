@@ -1,5 +1,6 @@
+import { RouteMetadata, ControllerMetadata } from '@soapjs/soap';
+
 import { DecoratorRegistry } from '../registry';
-import { RouteMetadata, ControllerMetadata } from '../../types';
 
 describe('DecoratorRegistry', () => {
   beforeEach(() => {

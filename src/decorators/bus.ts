@@ -15,7 +15,7 @@ export function CommandBus(options?: {
   return function (target: any) {
     // Register as injectable
     const token = options?.token || 'CommandBus';
-    DI.registerClass(target, token, {
+    DI.bind(token).toClass(target, {
       scope: options?.scope || Scope.SINGLETON
     });
 
@@ -43,7 +43,7 @@ export function QueryBus(options?: {
   return function (target: any) {
     // Register as injectable
     const token = options?.token || 'QueryBus';
-    DI.registerClass(target, token, {
+    DI.bind(token).toClass(target, {
       scope: options?.scope || Scope.SINGLETON
     });
 

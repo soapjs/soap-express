@@ -4,10 +4,13 @@ import { DecoratorRegistry } from '../registry';
 import { DI } from '@soapjs/soap';
 
 // Mock DI
+const mockToClass = jest.fn();
 jest.mock('@soapjs/soap', () => ({
   ...jest.requireActual('@soapjs/soap'),
   DI: {
-    registerClass: jest.fn()
+    bind: jest.fn(() => ({
+      toClass: mockToClass
+    }))
   },
   Scope: {
     SINGLETON: 'singleton',
@@ -30,9 +33,9 @@ describe('Bus Decorators', () => {
         async dispatch() { return {} as any; }
       }
 
-      expect(DI.registerClass).toHaveBeenCalledWith(
+      expect(DI.bind).toHaveBeenCalledWith('CommandBus');
+      expect(mockToClass).toHaveBeenCalledWith(
         TestCommandBus,
-        'CommandBus',
         { scope: Scope.SINGLETON }
       );
 
@@ -55,9 +58,9 @@ describe('Bus Decorators', () => {
         async dispatch() { return {} as any; }
       }
 
-      expect(DI.registerClass).toHaveBeenCalledWith(
+      expect(DI.bind).toHaveBeenCalledWith('CustomCommandBus');
+      expect(mockToClass).toHaveBeenCalledWith(
         TestCommandBus,
-        'CustomCommandBus',
         { scope: Scope.TRANSIENT }
       );
 
@@ -80,9 +83,9 @@ describe('Bus Decorators', () => {
         async dispatch() { return {} as any; }
       }
 
-      expect(DI.registerClass).toHaveBeenCalledWith(
+      expect(DI.bind).toHaveBeenCalledWith('RequestCommandBus');
+      expect(mockToClass).toHaveBeenCalledWith(
         TestCommandBus,
-        'RequestCommandBus',
         { scope: Scope.REQUEST }
       );
 
@@ -122,9 +125,9 @@ describe('Bus Decorators', () => {
         async dispatch() { return {} as any; }
       }
 
-      expect(DI.registerClass).toHaveBeenCalledWith(
+      expect(DI.bind).toHaveBeenCalledWith('QueryBus');
+      expect(mockToClass).toHaveBeenCalledWith(
         TestQueryBus,
-        'QueryBus',
         { scope: Scope.SINGLETON }
       );
 
@@ -147,9 +150,9 @@ describe('Bus Decorators', () => {
         async dispatch() { return {} as any; }
       }
 
-      expect(DI.registerClass).toHaveBeenCalledWith(
+      expect(DI.bind).toHaveBeenCalledWith('CustomQueryBus');
+      expect(mockToClass).toHaveBeenCalledWith(
         TestQueryBus,
-        'CustomQueryBus',
         { scope: Scope.TRANSIENT }
       );
 
@@ -172,9 +175,9 @@ describe('Bus Decorators', () => {
         async dispatch() { return {} as any; }
       }
 
-      expect(DI.registerClass).toHaveBeenCalledWith(
+      expect(DI.bind).toHaveBeenCalledWith('RequestQueryBus');
+      expect(mockToClass).toHaveBeenCalledWith(
         TestQueryBus,
-        'RequestQueryBus',
         { scope: Scope.REQUEST }
       );
 

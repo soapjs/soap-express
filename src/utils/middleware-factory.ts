@@ -1,4 +1,5 @@
-import { MiddlewareMetadata } from '../types';
+import { MiddlewareMetadata } from '@soapjs/soap';
+
 import { AuthenticationMiddleware, AuthorizationMiddleware } from '../middlewares/auth';
 import { ValidationMiddleware } from '../middlewares/validation';
 import { CorsMiddleware } from '../middlewares/cors';

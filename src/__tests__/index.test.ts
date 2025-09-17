@@ -19,12 +19,6 @@ describe('SoapExpress Module Exports', () => {
     expect(SoapExpress.ErrorHandler).toBeDefined();
   });
 
-  it('should export auth types', () => {
-    expect(SoapExpress.AuthType).toBeDefined();
-    expect(SoapExpress.AuthRegistry).toBeDefined();
-    expect(SoapExpress.AuthMiddlewareFactory).toBeDefined();
-  });
-
   it('should re-export @soapjs/soap components', () => {
     // These should be available from the re-export
     expect(SoapExpress.Route).toBeDefined();

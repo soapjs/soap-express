@@ -1,8 +1,8 @@
+import { DIContainer, RouteMetadata, ControllerMetadata, MiddlewareMetadata } from '@soapjs/soap';
+
 import { RouteBuilder } from '../route-builder';
 import { DecoratorRegistry } from '../../decorators/registry';
 import { MiddlewareFactory } from '../middleware-factory';
-import { RouteMetadata, ControllerMetadata, MiddlewareMetadata } from '../../types';
-import { DIContainer } from '@soapjs/soap';
 
 // Mock dependencies
 jest.mock('../../decorators/registry');

@@ -1,5 +1,6 @@
+import { RouteMetadata, MiddlewareMetadata } from '@soapjs/soap';
+
 import { SoapRouter } from '../router';
-import { RouteMetadata, MiddlewareMetadata } from '../types';
 
 describe('SoapRouter', () => {
   let router: SoapRouter;

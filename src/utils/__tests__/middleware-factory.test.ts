@@ -1,5 +1,6 @@
+import { MiddlewareMetadata } from '@soapjs/soap';
+
 import { MiddlewareFactory } from '../middleware-factory';
-import { MiddlewareMetadata } from '../../types';
 
 // Mock the middleware classes
 jest.mock('../../middlewares/auth');

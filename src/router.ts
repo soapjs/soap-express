@@ -1,5 +1,5 @@
-import { Request, Response } from 'express';
-import { RouteMetadata, MiddlewareMetadata, RouteHandler, RouteErrorHandler } from './types';
+import { RouteMetadata, MiddlewareMetadata } from '@soapjs/soap';
+import { RouteErrorHandler, RouteHandler } from './types';
 
 export class SoapRouter {
   private routes: RouteMetadata[] = [];

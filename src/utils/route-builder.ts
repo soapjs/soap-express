@@ -1,8 +1,7 @@
 import { Express, Request, Response, NextFunction } from 'express';
-import { RouteMetadata, MiddlewareMetadata } from '../types';
 import { DecoratorRegistry } from '../decorators/registry';
 import { MiddlewareFactory } from './middleware-factory';
-import { Route, RouteGroup, DIContainer, get, RouteAdditionalOptions } from '@soapjs/soap';
+import { Route, RouteGroup, DIContainer, RouteAdditionalOptions, MiddlewareMetadata, RouteMetadata } from '@soapjs/soap';
 
 export class RouteBuilder {
   private middlewareFactory: MiddlewareFactory;
@@ -44,7 +43,7 @@ export class RouteBuilder {
           let result;          
           if (route.useCase) {
             // UseCase execution
-            const useCase = get(route.useCase);
+            const useCase = this.container.get(route.useCase.name);
             const input = route.routeIO ? route.routeIO.from(req) : req.body;
             result = await (useCase as any).execute(input);
             
@@ -91,7 +90,7 @@ export class RouteBuilder {
     const authMiddlewares = this.buildAuthMiddlewares(controller, metadata);
     const allMiddlewares = [...middlewares, ...authMiddlewares];
     
-    const controllerInstance = get(controller.name);
+    const controllerInstance = this.container.get(controller.name);
 
     this.app[metadata.method.toLowerCase()](fullPath, ...allMiddlewares, async (req: Request, res: Response, next: NextFunction) => {
       try {
@@ -99,7 +98,7 @@ export class RouteBuilder {
         
         if (metadata.useCase) {
           // UseCase execution
-          const useCase = get(metadata.useCase.name);
+          const useCase = this.container.get(metadata.useCase.name);
           const input = metadata.routeIO ? metadata.routeIO.from(req) : req.body;
           result = await (useCase as any).execute(input);
           

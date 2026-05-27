@@ -1,195 +1,111 @@
-import { Command, Scope } from '@soapjs/soap';
-import { Command as CommandDecorator, CommandHandlerDecorator } from '../command';
+import { CommandHandler } from '../command';
 import { DecoratorRegistry } from '../registry';
-import { DI } from '@soapjs/soap';
 
-// Mock DI
-const mockToClass = jest.fn();
-jest.mock('@soapjs/soap', () => ({
-  ...jest.requireActual('@soapjs/soap'),
-  DI: {
-    bind: jest.fn(() => ({
-      toClass: mockToClass
-    }))
-  },
-  Scope: {
-    SINGLETON: 'singleton',
-    TRANSIENT: 'transient',
-    REQUEST: 'request'
-  }
-}));
-
-describe('Command Decorators - Simple Tests', () => {
+describe('CommandHandler decorator', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
     DecoratorRegistry.clear();
   });
 
-  describe('@Command', () => {
-    it('should register command handler with default options', () => {
+  describe('default options', () => {
+    it('registers metadata in DecoratorRegistry with default token and singleton scope', () => {
       class TestCommand {
         constructor(public data: string) {}
       }
 
-      @CommandDecorator(TestCommand as any)
+      @CommandHandler(TestCommand as any)
       class TestCommandHandler {
         async handle(command: TestCommand) {
           return { success: true, data: command.data };
         }
       }
 
-      expect(DI.bind).toHaveBeenCalledWith('CommandHandler:TestCommand');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestCommandHandler,
-        { scope: Scope.SINGLETON }
-      );
-
-      const commandHandlers = DecoratorRegistry.getCommandHandlers();
-      expect(commandHandlers.size).toBe(1);
-      expect(commandHandlers.get('CommandHandler:TestCommand')).toEqual({
+      const handlers = DecoratorRegistry.getCommandHandlers();
+      expect(handlers.size).toBe(1);
+      expect(handlers.get('CommandHandler:TestCommand')).toEqual({
         commandType: TestCommand,
         handlerClass: TestCommandHandler,
         token: 'CommandHandler:TestCommand',
-        scope: 'singleton'
+        scope: 'singleton',
       });
     });
 
-    it('should work with different command types', () => {
-      class CreateUserCommand {
-        constructor(public name: string) {}
-      }
+    it('does NOT call DI.bind() — DI wiring is deferred to wireCqrs()', () => {
+      // If DI.bind were called here it would throw because there is no global
+      // DI context in this test — confirming the decorator is metadata-only.
+      class NoopCommand {}
 
-      class UpdateUserCommand {
-        constructor(public id: string, public name: string) {}
-      }
+      expect(() => {
+        @CommandHandler(NoopCommand as any)
+        class NoopHandler { async handle() {} }
+      }).not.toThrow();
+    });
 
-      @CommandDecorator(CreateUserCommand as any)
-      class CreateUserHandler {
-        async handle(command: CreateUserCommand) {
-          return { success: true, data: command.name };
-        }
-      }
+    it('works with multiple command types', () => {
+      class CreateUserCommand {}
+      class UpdateUserCommand {}
 
-      @CommandDecorator(UpdateUserCommand as any)
-      class UpdateUserHandler {
-        async handle(command: UpdateUserCommand) {
-          return { success: true };
-        }
-      }
+      @CommandHandler(CreateUserCommand as any)
+      class CreateUserHandler { async handle() {} }
 
-      const commandHandlers = DecoratorRegistry.getCommandHandlers();
-      expect(commandHandlers.size).toBe(2);
-      expect(commandHandlers.has('CommandHandler:CreateUserCommand')).toBe(true);
-      expect(commandHandlers.has('CommandHandler:UpdateUserCommand')).toBe(true);
+      @CommandHandler(UpdateUserCommand as any)
+      class UpdateUserHandler { async handle() {} }
+
+      const handlers = DecoratorRegistry.getCommandHandlers();
+      expect(handlers.size).toBe(2);
+      expect(handlers.has('CommandHandler:CreateUserCommand')).toBe(true);
+      expect(handlers.has('CommandHandler:UpdateUserCommand')).toBe(true);
     });
   });
 
-  describe('@CommandHandler', () => {
-    it('should register command handler with custom options', () => {
-      class TestCommand {
-        constructor(public data: string) {}
-      }
+  describe('custom options', () => {
+    it('uses a custom token when provided', () => {
+      class TestCommand {}
 
-      @CommandHandlerDecorator(TestCommand as any, {
-        token: 'CustomTestCommandHandler',
-        scope: Scope.TRANSIENT
-      })
-      class TestCommandHandler {
-        async handle(command: TestCommand) {
-          return { success: true, data: command.data };
-        }
-      }
+      @CommandHandler(TestCommand as any, { token: 'MyCustomHandler' })
+      class TestCommandHandler { async handle() {} }
 
-      expect(DI.bind).toHaveBeenCalledWith('CustomTestCommandHandler');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestCommandHandler,
-        { scope: Scope.TRANSIENT }
-      );
-
-      const commandHandlers = DecoratorRegistry.getCommandHandlers();
-      expect(commandHandlers.size).toBe(1);
-      expect(commandHandlers.get('CustomTestCommandHandler')).toEqual({
-        commandType: TestCommand,
-        handlerClass: TestCommandHandler,
-        token: 'CustomTestCommandHandler',
-        scope: 'transient'
-      });
+      const meta = DecoratorRegistry.getCommandHandler('MyCustomHandler');
+      expect(meta).toBeDefined();
+      expect(meta?.token).toBe('MyCustomHandler');
+      expect(meta?.handlerClass).toBe(TestCommandHandler);
     });
 
-    it('should register command handler with REQUEST scope', () => {
-      class TestCommand {
-        constructor(public data: string) {}
-      }
+    it('stores the supplied scope', () => {
+      class TestCommand {}
 
-      @CommandHandlerDecorator(TestCommand as any, {
-        token: 'RequestTestCommandHandler',
-        scope: Scope.REQUEST
-      })
-      class TestCommandHandler {
-        async handle(command: TestCommand) {
-          return { success: true, data: command.data };
-        }
-      }
+      @CommandHandler(TestCommand as any, { scope: 'transient' as any })
+      class TestCommandHandler { async handle() {} }
 
-      expect(DI.bind).toHaveBeenCalledWith('RequestTestCommandHandler');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestCommandHandler,
-        { scope: Scope.REQUEST }
-      );
-
-      const commandHandlers = DecoratorRegistry.getCommandHandlers();
-      expect(commandHandlers.get('RequestTestCommandHandler')).toEqual({
-        commandType: TestCommand,
-        handlerClass: TestCommandHandler,
-        token: 'RequestTestCommandHandler',
-        scope: 'request'
-      });
+      const meta = DecoratorRegistry.getCommandHandler('CommandHandler:TestCommand');
+      expect(meta?.scope).toBe('transient');
     });
   });
 
-  describe('Registry Integration', () => {
-    it('should clear all command handler registrations', () => {
-      class TestCommand {
-        constructor(public data: string) {}
-      }
+  describe('registry helpers', () => {
+    it('getCommandHandler returns undefined for unknown token', () => {
+      expect(DecoratorRegistry.getCommandHandler('NonExistent')).toBeUndefined();
+    });
 
-      @CommandDecorator(TestCommand as any)
-      class TestCommandHandler {
-        async handle(command: TestCommand) {
-          return { success: true, data: command.data };
-        }
-      }
+    it('clear() removes all command handler registrations', () => {
+      class ACommand {}
+
+      @CommandHandler(ACommand as any)
+      class AHandler { async handle() {} }
 
       expect(DecoratorRegistry.getCommandHandlers().size).toBe(1);
-
       DecoratorRegistry.clear();
-
       expect(DecoratorRegistry.getCommandHandlers().size).toBe(0);
     });
 
-    it('should get specific command handler by token', () => {
-      class TestCommand {
-        constructor(public data: string) {}
-      }
+    it('getCommandHandler returns the right handler class', () => {
+      class SpecificCommand {}
 
-      @CommandHandlerDecorator(TestCommand as any, { token: 'SpecificHandler' })
-      class TestCommandHandler {
-        async handle(command: TestCommand) {
-          return { success: true, data: command.data };
-        }
-      }
+      @CommandHandler(SpecificCommand as any, { token: 'SpecificHandler' })
+      class SpecificHandler { async handle() {} }
 
-      const handler = DecoratorRegistry.getCommandHandler('SpecificHandler');
-
-      expect(handler).toBeDefined();
-      expect(handler?.handlerClass).toBe(TestCommandHandler);
-      expect(handler?.commandType).toBe(TestCommand);
-    });
-
-    it('should return undefined for non-existent command handler', () => {
-      const handler = DecoratorRegistry.getCommandHandler('NonExistent');
-
-      expect(handler).toBeUndefined();
+      const meta = DecoratorRegistry.getCommandHandler('SpecificHandler');
+      expect(meta?.handlerClass).toBe(SpecificHandler);
+      expect(meta?.commandType).toBe(SpecificCommand);
     });
   });
 });

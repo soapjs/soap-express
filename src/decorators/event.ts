@@ -1,43 +1,47 @@
-import { DomainEvent, Scope } from '@soapjs/soap';
+import { DomainEvent } from '@soapjs/soap/domain';
+import { Scope } from '@soapjs/soap/common';
 import { DecoratorRegistry } from './registry';
-import { DI } from '@soapjs/soap';
 
 /**
- * Event Handler interface
+ * Structural interface for event handler classes.
+ * Implement this on your handler to get compile-time type-checking.
+ *
+ * @example
+ * class MyHandler implements IEventHandler<UserCreatedEvent> {
+ *   async handle(event: UserCreatedEvent): Promise<void> { ... }
+ * }
  */
-export interface EventHandler<TEvent extends DomainEvent> {
+export interface IEventHandler<TEvent extends DomainEvent> {
   handle(event: TEvent): Promise<void>;
 }
 
 /**
- * Decorator for Event Handlers
- * Automatically registers the handler with the EventBus
- * 
- * @param eventType - The event class that this handler processes
- * @param options - Optional configuration
+ * Registers a class as a handler for the given domain event type.
+ *
+ * The handler is recorded in {@link DecoratorRegistry} at decoration time.
+ * Use the event bus (wired via your own event dispatcher) to dispatch events to it.
+ *
+ * @example
+ * @EventHandler(UserCreatedEvent)
+ * class SendWelcomeEmailHandler implements IEventHandler<UserCreatedEvent> {
+ *   async handle(event: UserCreatedEvent): Promise<void> { ... }
+ * }
  */
 export function EventHandler<TEvent extends DomainEvent>(
   eventType: new (...args: any[]) => TEvent,
   options?: {
+    /** Override the DI token. Default: `"EventHandler:<eventType.name>"`. */
     token?: string;
     scope?: Scope;
   }
-) {
+): ClassDecorator {
   return function (target: any) {
-    // Register as injectable
-    const token = options?.token || `EventHandler:${eventType.name}`;
-    DI.bind(token).toClass(target, {
-      scope: options?.scope || Scope.SINGLETON
-    });
-
-    // Store event handler metadata
-    const metadata = {
+    const token = options?.token ?? `EventHandler:${eventType.name}`;
+    DecoratorRegistry.registerEventHandler({
       eventType,
       handlerClass: target,
-      token: options?.token || `EventHandler:${eventType.name}`,
-      scope: options?.scope || 'singleton'
-    };
-
-    DecoratorRegistry.registerEventHandler(metadata);
+      token,
+      scope: (options?.scope ?? Scope.SINGLETON) as unknown as string,
+    });
   };
 }

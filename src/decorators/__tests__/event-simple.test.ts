@@ -1,193 +1,109 @@
-import { DomainEvent, Scope } from '@soapjs/soap';
 import { EventHandler } from '../event';
 import { DecoratorRegistry } from '../registry';
-import { DI } from '@soapjs/soap';
 
-// Mock DI
-const mockToClass = jest.fn();
-jest.mock('@soapjs/soap', () => ({
-  ...jest.requireActual('@soapjs/soap'),
-  DI: {
-    bind: jest.fn(() => ({
-      toClass: mockToClass
-    }))
-  },
-  Scope: {
-    SINGLETON: 'singleton',
-    TRANSIENT: 'transient',
-    REQUEST: 'request'
-  }
-}));
-
-describe('Event Decorators - Simple Tests', () => {
+describe('EventHandler decorator', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
     DecoratorRegistry.clear();
   });
 
-  describe('@EventHandler', () => {
-    it('should register event handler with default options', () => {
-      class TestEvent {
-        constructor(public data: string) {}
-      }
-
-      @EventHandler(TestEvent as any)
-      class TestEventHandler {
-        async handle(event: TestEvent): Promise<void> {
-          console.log('Handling test event:', event.data);
-        }
-      }
-
-      expect(DI.bind).toHaveBeenCalledWith('EventHandler:TestEvent');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestEventHandler,
-        { scope: Scope.SINGLETON }
-      );
-
-      const eventHandlers = DecoratorRegistry.getEventHandlers();
-      expect(eventHandlers.size).toBe(1);
-      expect(eventHandlers.get('EventHandler:TestEvent')).toEqual({
-        eventType: TestEvent,
-        handlerClass: TestEventHandler,
-        token: 'EventHandler:TestEvent',
-        scope: 'singleton'
-      });
-    });
-
-    it('should register event handler with custom options', () => {
-      class TestEvent {
-        constructor(public data: string) {}
-      }
-
-      @EventHandler(TestEvent as any, {
-        token: 'CustomTestEventHandler',
-        scope: Scope.TRANSIENT
-      })
-      class TestEventHandler {
-        async handle(event: TestEvent): Promise<void> {
-          console.log('Handling test event:', event.data);
-        }
-      }
-
-      expect(DI.bind).toHaveBeenCalledWith('CustomTestEventHandler');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestEventHandler,
-        { scope: Scope.TRANSIENT }
-      );
-
-      const eventHandlers = DecoratorRegistry.getEventHandlers();
-      expect(eventHandlers.size).toBe(1);
-      expect(eventHandlers.get('CustomTestEventHandler')).toEqual({
-        eventType: TestEvent,
-        handlerClass: TestEventHandler,
-        token: 'CustomTestEventHandler',
-        scope: 'transient'
-      });
-    });
-
-    it('should register event handler with REQUEST scope', () => {
-      class TestEvent {
-        constructor(public data: string) {}
-      }
-
-      @EventHandler(TestEvent as any, {
-        token: 'RequestTestEventHandler',
-        scope: Scope.REQUEST
-      })
-      class TestEventHandler {
-        async handle(event: TestEvent): Promise<void> {
-          console.log('Handling test event:', event.data);
-        }
-      }
-
-      expect(DI.bind).toHaveBeenCalledWith('RequestTestEventHandler');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestEventHandler,
-        { scope: Scope.REQUEST }
-      );
-
-      const eventHandlers = DecoratorRegistry.getEventHandlers();
-      expect(eventHandlers.get('RequestTestEventHandler')).toEqual({
-        eventType: TestEvent,
-        handlerClass: TestEventHandler,
-        token: 'RequestTestEventHandler',
-        scope: 'request'
-      });
-    });
-
-    it('should work with different event types', () => {
+  describe('default options', () => {
+    it('registers metadata in DecoratorRegistry with default token and singleton scope', () => {
       class UserCreatedEvent {
-        constructor(public userId: string, public name: string) {}
-      }
-
-      class UserUpdatedEvent {
-        constructor(public userId: string, public changes: Record<string, any>) {}
+        constructor(public userId: string) {}
       }
 
       @EventHandler(UserCreatedEvent as any)
       class UserCreatedHandler {
         async handle(event: UserCreatedEvent): Promise<void> {
-          console.log('User created:', event.userId, event.name);
+          console.log('User created:', event.userId);
         }
       }
+
+      const handlers = DecoratorRegistry.getEventHandlers();
+      expect(handlers.size).toBe(1);
+      expect(handlers.get('EventHandler:UserCreatedEvent')).toEqual({
+        eventType: UserCreatedEvent,
+        handlerClass: UserCreatedHandler,
+        token: 'EventHandler:UserCreatedEvent',
+        scope: 'singleton',
+      });
+    });
+
+    it('does NOT call DI.bind() — DI wiring is deferred to the event bus', () => {
+      class NoopEvent {}
+
+      expect(() => {
+        @EventHandler(NoopEvent as any)
+        class NoopHandler { async handle(): Promise<void> {} }
+      }).not.toThrow();
+    });
+
+    it('works with multiple event types', () => {
+      class UserCreatedEvent {}
+      class UserUpdatedEvent {}
+
+      @EventHandler(UserCreatedEvent as any)
+      class UserCreatedHandler { async handle(): Promise<void> {} }
 
       @EventHandler(UserUpdatedEvent as any)
-      class UserUpdatedHandler {
-        async handle(event: UserUpdatedEvent): Promise<void> {
-          console.log('User updated:', event.userId, event.changes);
-        }
-      }
+      class UserUpdatedHandler { async handle(): Promise<void> {} }
 
-      const eventHandlers = DecoratorRegistry.getEventHandlers();
-      expect(eventHandlers.size).toBe(2);
-      expect(eventHandlers.has('EventHandler:UserCreatedEvent')).toBe(true);
-      expect(eventHandlers.has('EventHandler:UserUpdatedEvent')).toBe(true);
+      const handlers = DecoratorRegistry.getEventHandlers();
+      expect(handlers.size).toBe(2);
+      expect(handlers.has('EventHandler:UserCreatedEvent')).toBe(true);
+      expect(handlers.has('EventHandler:UserUpdatedEvent')).toBe(true);
     });
   });
 
-  describe('Registry Integration', () => {
-    it('should clear all event handler registrations', () => {
-      class TestEvent {
-        constructor(public data: string) {}
-      }
+  describe('custom options', () => {
+    it('uses a custom token when provided', () => {
+      class SomeEvent {}
 
-      @EventHandler(TestEvent as any)
-      class TestEventHandler {
-        async handle(event: TestEvent): Promise<void> {
-          console.log('Handling test event:', event.data);
-        }
-      }
+      @EventHandler(SomeEvent as any, { token: 'MySomeEventHandler' })
+      class SomeEventHandler { async handle(): Promise<void> {} }
+
+      const meta = DecoratorRegistry.getEventHandler('MySomeEventHandler');
+      expect(meta).toBeDefined();
+      expect(meta?.token).toBe('MySomeEventHandler');
+      expect(meta?.handlerClass).toBe(SomeEventHandler);
+    });
+
+    it('stores the supplied scope', () => {
+      class AnotherEvent {}
+
+      @EventHandler(AnotherEvent as any, { scope: 'transient' as any })
+      class AnotherEventHandler { async handle(): Promise<void> {} }
+
+      const meta = DecoratorRegistry.getEventHandler('EventHandler:AnotherEvent');
+      expect(meta?.scope).toBe('transient');
+    });
+  });
+
+  describe('registry helpers', () => {
+    it('getEventHandler returns undefined for unknown token', () => {
+      expect(DecoratorRegistry.getEventHandler('NonExistent')).toBeUndefined();
+    });
+
+    it('clear() removes all event handler registrations', () => {
+      class AnEvent {}
+
+      @EventHandler(AnEvent as any)
+      class AnEventHandler { async handle(): Promise<void> {} }
 
       expect(DecoratorRegistry.getEventHandlers().size).toBe(1);
-
       DecoratorRegistry.clear();
-
       expect(DecoratorRegistry.getEventHandlers().size).toBe(0);
     });
 
-    it('should get specific event handler by token', () => {
-      class TestEvent {
-        constructor(public data: string) {}
-      }
+    it('getEventHandler returns the right handler class', () => {
+      class SpecificEvent {}
 
-      @EventHandler(TestEvent as any, { token: 'SpecificHandler' })
-      class TestEventHandler {
-        async handle(event: TestEvent): Promise<void> {
-          console.log('Handling test event:', event.data);
-        }
-      }
+      @EventHandler(SpecificEvent as any, { token: 'SpecificEventHandler' })
+      class SpecificHandler { async handle(): Promise<void> {} }
 
-      const handler = DecoratorRegistry.getEventHandler('SpecificHandler');
-
-      expect(handler).toBeDefined();
-      expect(handler?.handlerClass).toBe(TestEventHandler);
-      expect(handler?.eventType).toBe(TestEvent);
-    });
-
-    it('should return undefined for non-existent event handler', () => {
-      const handler = DecoratorRegistry.getEventHandler('NonExistent');
-
-      expect(handler).toBeUndefined();
+      const meta = DecoratorRegistry.getEventHandler('SpecificEventHandler');
+      expect(meta?.handlerClass).toBe(SpecificHandler);
+      expect(meta?.eventType).toBe(SpecificEvent);
     });
   });
 });

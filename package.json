@@ -1,6 +1,6 @@
 {
   "name": "@soapjs/soap-express",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "HTTP-focused Express.js integration for @soapjs/soap framework with dependency injection support",
   "homepage": "https://docs.soapjs.com",
   "repository": "https://github.com/soapjs/soap-express",

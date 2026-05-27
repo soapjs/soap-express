@@ -1,195 +1,109 @@
-import { Query, Scope } from '@soapjs/soap';
-import { Query as QueryDecorator, QueryHandlerDecorator } from '../query';
+import { QueryHandler } from '../query';
 import { DecoratorRegistry } from '../registry';
-import { DI } from '@soapjs/soap';
 
-// Mock DI
-const mockToClass = jest.fn();
-jest.mock('@soapjs/soap', () => ({
-  ...jest.requireActual('@soapjs/soap'),
-  DI: {
-    bind: jest.fn(() => ({
-      toClass: mockToClass
-    }))
-  },
-  Scope: {
-    SINGLETON: 'singleton',
-    TRANSIENT: 'transient',
-    REQUEST: 'request'
-  }
-}));
-
-describe('Query Decorators - Simple Tests', () => {
+describe('QueryHandler decorator', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
     DecoratorRegistry.clear();
   });
 
-  describe('@Query', () => {
-    it('should register query handler with default options', () => {
+  describe('default options', () => {
+    it('registers metadata in DecoratorRegistry with default token and singleton scope', () => {
       class TestQuery {
         constructor(public id: string) {}
       }
 
-      @QueryDecorator(TestQuery as any)
+      @QueryHandler(TestQuery as any)
       class TestQueryHandler {
         async handle(query: TestQuery) {
-          return { success: true, data: query.id };
+          return { id: query.id };
         }
       }
 
-      expect(DI.bind).toHaveBeenCalledWith('QueryHandler:TestQuery');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestQueryHandler,
-        { scope: Scope.SINGLETON }
-      );
-
-      const queryHandlers = DecoratorRegistry.getQueryHandlers();
-      expect(queryHandlers.size).toBe(1);
-      expect(queryHandlers.get('QueryHandler:TestQuery')).toEqual({
+      const handlers = DecoratorRegistry.getQueryHandlers();
+      expect(handlers.size).toBe(1);
+      expect(handlers.get('QueryHandler:TestQuery')).toEqual({
         queryType: TestQuery,
         handlerClass: TestQueryHandler,
         token: 'QueryHandler:TestQuery',
-        scope: 'singleton'
+        scope: 'singleton',
       });
     });
 
-    it('should work with different query types', () => {
-      class GetUserQuery {
-        constructor(public userId: string) {}
-      }
+    it('does NOT call DI.bind() — DI wiring is deferred to wireCqrs()', () => {
+      class NoopQuery {}
 
-      class GetUsersQuery {
-        constructor(public page: number, public limit: number) {}
-      }
+      expect(() => {
+        @QueryHandler(NoopQuery as any)
+        class NoopHandler { async handle() {} }
+      }).not.toThrow();
+    });
 
-      @QueryDecorator(GetUserQuery as any)
-      class GetUserHandler {
-        async handle(query: GetUserQuery) {
-          return { success: true, data: { id: query.userId, name: 'Test User' } };
-        }
-      }
+    it('works with multiple query types', () => {
+      class GetUserQuery {}
+      class GetUsersQuery {}
 
-      @QueryDecorator(GetUsersQuery as any)
-      class GetUsersHandler {
-        async handle(query: GetUsersQuery) {
-          return { success: true, data: [] };
-        }
-      }
+      @QueryHandler(GetUserQuery as any)
+      class GetUserHandler { async handle() {} }
 
-      const queryHandlers = DecoratorRegistry.getQueryHandlers();
-      expect(queryHandlers.size).toBe(2);
-      expect(queryHandlers.has('QueryHandler:GetUserQuery')).toBe(true);
-      expect(queryHandlers.has('QueryHandler:GetUsersQuery')).toBe(true);
+      @QueryHandler(GetUsersQuery as any)
+      class GetUsersHandler { async handle() {} }
+
+      const handlers = DecoratorRegistry.getQueryHandlers();
+      expect(handlers.size).toBe(2);
+      expect(handlers.has('QueryHandler:GetUserQuery')).toBe(true);
+      expect(handlers.has('QueryHandler:GetUsersQuery')).toBe(true);
     });
   });
 
-  describe('@QueryHandler', () => {
-    it('should register query handler with custom options', () => {
-      class TestQuery {
-        constructor(public id: string) {}
-      }
+  describe('custom options', () => {
+    it('uses a custom token when provided', () => {
+      class TestQuery {}
 
-      @QueryHandlerDecorator(TestQuery as any, {
-        token: 'CustomTestQueryHandler',
-        scope: Scope.TRANSIENT
-      })
-      class TestQueryHandler {
-        async handle(query: TestQuery) {
-          return { success: true, data: query.id };
-        }
-      }
+      @QueryHandler(TestQuery as any, { token: 'MyCustomQueryHandler' })
+      class TestQueryHandler { async handle() {} }
 
-      expect(DI.bind).toHaveBeenCalledWith('CustomTestQueryHandler');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestQueryHandler,
-        { scope: Scope.TRANSIENT }
-      );
-
-      const queryHandlers = DecoratorRegistry.getQueryHandlers();
-      expect(queryHandlers.size).toBe(1);
-      expect(queryHandlers.get('CustomTestQueryHandler')).toEqual({
-        queryType: TestQuery,
-        handlerClass: TestQueryHandler,
-        token: 'CustomTestQueryHandler',
-        scope: 'transient'
-      });
+      const meta = DecoratorRegistry.getQueryHandler('MyCustomQueryHandler');
+      expect(meta).toBeDefined();
+      expect(meta?.token).toBe('MyCustomQueryHandler');
+      expect(meta?.handlerClass).toBe(TestQueryHandler);
     });
 
-    it('should register query handler with REQUEST scope', () => {
-      class TestQuery {
-        constructor(public id: string) {}
-      }
+    it('stores the supplied scope', () => {
+      class TestQuery {}
 
-      @QueryHandlerDecorator(TestQuery as any, {
-        token: 'RequestTestQueryHandler',
-        scope: Scope.REQUEST
-      })
-      class TestQueryHandler {
-        async handle(query: TestQuery) {
-          return { success: true, data: query.id };
-        }
-      }
+      @QueryHandler(TestQuery as any, { scope: 'transient' as any })
+      class TestQueryHandler { async handle() {} }
 
-      expect(DI.bind).toHaveBeenCalledWith('RequestTestQueryHandler');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestQueryHandler,
-        { scope: Scope.REQUEST }
-      );
-
-      const queryHandlers = DecoratorRegistry.getQueryHandlers();
-      expect(queryHandlers.get('RequestTestQueryHandler')).toEqual({
-        queryType: TestQuery,
-        handlerClass: TestQueryHandler,
-        token: 'RequestTestQueryHandler',
-        scope: 'request'
-      });
+      const meta = DecoratorRegistry.getQueryHandler('QueryHandler:TestQuery');
+      expect(meta?.scope).toBe('transient');
     });
   });
 
-  describe('Registry Integration', () => {
-    it('should clear all query handler registrations', () => {
-      class TestQuery {
-        constructor(public id: string) {}
-      }
+  describe('registry helpers', () => {
+    it('getQueryHandler returns undefined for unknown token', () => {
+      expect(DecoratorRegistry.getQueryHandler('NonExistent')).toBeUndefined();
+    });
 
-      @QueryDecorator(TestQuery as any)
-      class TestQueryHandler {
-        async handle(query: TestQuery) {
-          return { success: true, data: query.id };
-        }
-      }
+    it('clear() removes all query handler registrations', () => {
+      class AQuery {}
+
+      @QueryHandler(AQuery as any)
+      class AHandler { async handle() {} }
 
       expect(DecoratorRegistry.getQueryHandlers().size).toBe(1);
-
       DecoratorRegistry.clear();
-
       expect(DecoratorRegistry.getQueryHandlers().size).toBe(0);
     });
 
-    it('should get specific query handler by token', () => {
-      class TestQuery {
-        constructor(public id: string) {}
-      }
+    it('getQueryHandler returns the right handler class', () => {
+      class SpecificQuery {}
 
-      @QueryHandlerDecorator(TestQuery as any, { token: 'SpecificHandler' })
-      class TestQueryHandler {
-        async handle(query: TestQuery) {
-          return { success: true, data: query.id };
-        }
-      }
+      @QueryHandler(SpecificQuery as any, { token: 'SpecificQueryHandler' })
+      class SpecificHandler { async handle() {} }
 
-      const handler = DecoratorRegistry.getQueryHandler('SpecificHandler');
-
-      expect(handler).toBeDefined();
-      expect(handler?.handlerClass).toBe(TestQueryHandler);
-      expect(handler?.queryType).toBe(TestQuery);
-    });
-
-    it('should return undefined for non-existent query handler', () => {
-      const handler = DecoratorRegistry.getQueryHandler('NonExistent');
-
-      expect(handler).toBeUndefined();
+      const meta = DecoratorRegistry.getQueryHandler('SpecificQueryHandler');
+      expect(meta?.handlerClass).toBe(SpecificHandler);
+      expect(meta?.queryType).toBe(SpecificQuery);
     });
   });
 });

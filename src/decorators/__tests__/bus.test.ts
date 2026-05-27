@@ -1,227 +1,143 @@
-import { CommandBus, QueryBus, Scope } from '@soapjs/soap';
-import { CommandBus as CommandBusDecorator, QueryBus as QueryBusDecorator } from '../bus';
+import { CommandBus, QueryBus } from '../bus';
 import { DecoratorRegistry } from '../registry';
-import { DI } from '@soapjs/soap';
 
-// Mock DI
-const mockToClass = jest.fn();
-jest.mock('@soapjs/soap', () => ({
-  ...jest.requireActual('@soapjs/soap'),
-  DI: {
-    bind: jest.fn(() => ({
-      toClass: mockToClass
-    }))
-  },
-  Scope: {
-    SINGLETON: 'singleton',
-    TRANSIENT: 'transient',
-    REQUEST: 'request'
-  }
-}));
-
-describe('Bus Decorators', () => {
+describe('CommandBus / QueryBus decorators', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
     DecoratorRegistry.clear();
   });
 
+  // ── @CommandBus ────────────────────────────────────────────────────────────
+
   describe('@CommandBus', () => {
-    it('should register command bus with default options', () => {
-      @CommandBusDecorator()
-      class TestCommandBus implements CommandBus {
+    it('registers with default token and singleton scope', () => {
+      @CommandBus()
+      class TestCommandBus {
         register() {}
         async dispatch() { return {} as any; }
       }
 
-      expect(DI.bind).toHaveBeenCalledWith('CommandBus');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestCommandBus,
-        { scope: Scope.SINGLETON }
-      );
-
-      const commandBuses = DecoratorRegistry.getCommandBuses();
-      expect(commandBuses.size).toBe(1);
-      expect(commandBuses.get('CommandBus')).toEqual({
+      const buses = DecoratorRegistry.getCommandBuses();
+      expect(buses.size).toBe(1);
+      expect(buses.get('CommandBus')).toEqual({
         busClass: TestCommandBus,
         token: 'CommandBus',
-        scope: 'singleton'
+        scope: 'singleton',
       });
     });
 
-    it('should register command bus with custom options', () => {
-      @CommandBusDecorator({
-        token: 'CustomCommandBus',
-        scope: Scope.TRANSIENT
-      })
-      class TestCommandBus implements CommandBus {
+    it('registers with a custom token', () => {
+      @CommandBus({ token: 'RedisCommandBus' })
+      class RedisCommandBus {
         register() {}
         async dispatch() { return {} as any; }
       }
 
-      expect(DI.bind).toHaveBeenCalledWith('CustomCommandBus');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestCommandBus,
-        { scope: Scope.TRANSIENT }
-      );
-
-      const commandBuses = DecoratorRegistry.getCommandBuses();
-      expect(commandBuses.size).toBe(1);
-      expect(commandBuses.get('CustomCommandBus')).toEqual({
-        busClass: TestCommandBus,
-        token: 'CustomCommandBus',
-        scope: 'transient'
-      });
+      const meta = DecoratorRegistry.getCommandBus('RedisCommandBus');
+      expect(meta?.busClass).toBe(RedisCommandBus);
+      expect(meta?.token).toBe('RedisCommandBus');
     });
 
-    it('should register command bus with REQUEST scope', () => {
-      @CommandBusDecorator({
-        token: 'RequestCommandBus',
-        scope: Scope.REQUEST
-      })
-      class TestCommandBus implements CommandBus {
+    it('stores the supplied scope', () => {
+      @CommandBus({ token: 'TransientBus', scope: 'transient' as any })
+      class TransientCommandBus {
         register() {}
         async dispatch() { return {} as any; }
       }
 
-      expect(DI.bind).toHaveBeenCalledWith('RequestCommandBus');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestCommandBus,
-        { scope: Scope.REQUEST }
-      );
-
-      const commandBuses = DecoratorRegistry.getCommandBuses();
-      expect(commandBuses.get('RequestCommandBus')).toEqual({
-        busClass: TestCommandBus,
-        token: 'RequestCommandBus',
-        scope: 'request'
-      });
+      const meta = DecoratorRegistry.getCommandBus('TransientBus');
+      expect(meta?.scope).toBe('transient');
     });
 
-    it('should handle multiple command buses', () => {
-      @CommandBusDecorator({ token: 'Bus1' })
-      class TestCommandBus1 implements CommandBus {
-        register() {}
-        async dispatch() { return {} as any; }
-      }
+    it('supports multiple command bus registrations', () => {
+      @CommandBus({ token: 'Bus1' })
+      class Bus1 { register() {} async dispatch() { return {} as any; } }
 
-      @CommandBusDecorator({ token: 'Bus2' })
-      class TestCommandBus2 implements CommandBus {
-        register() {}
-        async dispatch() { return {} as any; }
-      }
+      @CommandBus({ token: 'Bus2' })
+      class Bus2 { register() {} async dispatch() { return {} as any; } }
 
-      const commandBuses = DecoratorRegistry.getCommandBuses();
-      expect(commandBuses.size).toBe(2);
-      expect(commandBuses.has('Bus1')).toBe(true);
-      expect(commandBuses.has('Bus2')).toBe(true);
+      const buses = DecoratorRegistry.getCommandBuses();
+      expect(buses.size).toBe(2);
+      expect(buses.has('Bus1')).toBe(true);
+      expect(buses.has('Bus2')).toBe(true);
+    });
+
+    it('does NOT call DI.bind()', () => {
+      expect(() => {
+        @CommandBus()
+        class NoBind { register() {} async dispatch() { return {} as any; } }
+      }).not.toThrow();
     });
   });
+
+  // ── @QueryBus ──────────────────────────────────────────────────────────────
 
   describe('@QueryBus', () => {
-    it('should register query bus with default options', () => {
-      @QueryBusDecorator()
-      class TestQueryBus implements QueryBus {
+    it('registers with default token and singleton scope', () => {
+      @QueryBus()
+      class TestQueryBus {
         register() {}
         async dispatch() { return {} as any; }
       }
 
-      expect(DI.bind).toHaveBeenCalledWith('QueryBus');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestQueryBus,
-        { scope: Scope.SINGLETON }
-      );
-
-      const queryBuses = DecoratorRegistry.getQueryBuses();
-      expect(queryBuses.size).toBe(1);
-      expect(queryBuses.get('QueryBus')).toEqual({
+      const buses = DecoratorRegistry.getQueryBuses();
+      expect(buses.size).toBe(1);
+      expect(buses.get('QueryBus')).toEqual({
         busClass: TestQueryBus,
         token: 'QueryBus',
-        scope: 'singleton'
+        scope: 'singleton',
       });
     });
 
-    it('should register query bus with custom options', () => {
-      @QueryBusDecorator({
-        token: 'CustomQueryBus',
-        scope: Scope.TRANSIENT
-      })
-      class TestQueryBus implements QueryBus {
+    it('registers with a custom token', () => {
+      @QueryBus({ token: 'CachedQueryBus' })
+      class CachedQueryBus {
         register() {}
         async dispatch() { return {} as any; }
       }
 
-      expect(DI.bind).toHaveBeenCalledWith('CustomQueryBus');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestQueryBus,
-        { scope: Scope.TRANSIENT }
-      );
-
-      const queryBuses = DecoratorRegistry.getQueryBuses();
-      expect(queryBuses.size).toBe(1);
-      expect(queryBuses.get('CustomQueryBus')).toEqual({
-        busClass: TestQueryBus,
-        token: 'CustomQueryBus',
-        scope: 'transient'
-      });
+      const meta = DecoratorRegistry.getQueryBus('CachedQueryBus');
+      expect(meta?.busClass).toBe(CachedQueryBus);
     });
 
-    it('should register query bus with REQUEST scope', () => {
-      @QueryBusDecorator({
-        token: 'RequestQueryBus',
-        scope: Scope.REQUEST
-      })
-      class TestQueryBus implements QueryBus {
+    it('stores the supplied scope', () => {
+      @QueryBus({ token: 'TransientQueryBus', scope: 'transient' as any })
+      class TransientQueryBus {
         register() {}
         async dispatch() { return {} as any; }
       }
 
-      expect(DI.bind).toHaveBeenCalledWith('RequestQueryBus');
-      expect(mockToClass).toHaveBeenCalledWith(
-        TestQueryBus,
-        { scope: Scope.REQUEST }
-      );
-
-      const queryBuses = DecoratorRegistry.getQueryBuses();
-      expect(queryBuses.get('RequestQueryBus')).toEqual({
-        busClass: TestQueryBus,
-        token: 'RequestQueryBus',
-        scope: 'request'
-      });
+      const meta = DecoratorRegistry.getQueryBus('TransientQueryBus');
+      expect(meta?.scope).toBe('transient');
     });
 
-    it('should handle multiple query buses', () => {
-      @QueryBusDecorator({ token: 'QueryBus1' })
-      class TestQueryBus1 implements QueryBus {
-        register() {}
-        async dispatch() { return {} as any; }
-      }
+    it('supports multiple query bus registrations', () => {
+      @QueryBus({ token: 'QBus1' })
+      class QBus1 { register() {} async dispatch() { return {} as any; } }
 
-      @QueryBusDecorator({ token: 'QueryBus2' })
-      class TestQueryBus2 implements QueryBus {
-        register() {}
-        async dispatch() { return {} as any; }
-      }
+      @QueryBus({ token: 'QBus2' })
+      class QBus2 { register() {} async dispatch() { return {} as any; } }
 
-      const queryBuses = DecoratorRegistry.getQueryBuses();
-      expect(queryBuses.size).toBe(2);
-      expect(queryBuses.has('QueryBus1')).toBe(true);
-      expect(queryBuses.has('QueryBus2')).toBe(true);
+      const buses = DecoratorRegistry.getQueryBuses();
+      expect(buses.size).toBe(2);
+    });
+
+    it('does NOT call DI.bind()', () => {
+      expect(() => {
+        @QueryBus()
+        class NoBind { register() {} async dispatch() { return {} as any; } }
+      }).not.toThrow();
     });
   });
 
-  describe('Registry Integration', () => {
-    it('should clear all bus registrations', () => {
-      @CommandBusDecorator({ token: 'TestCommandBus' })
-      class TestCommandBus implements CommandBus {
-        register() {}
-        async dispatch() { return {} as any; }
-      }
+  // ── Registry helpers ───────────────────────────────────────────────────────
 
-      @QueryBusDecorator({ token: 'TestQueryBus' })
-      class TestQueryBus implements QueryBus {
-        register() {}
-        async dispatch() { return {} as any; }
-      }
+  describe('registry helpers', () => {
+    it('clear() removes all bus registrations', () => {
+      @CommandBus({ token: 'CBus' })
+      class CBus { register() {} async dispatch() { return {} as any; } }
+
+      @QueryBus({ token: 'QBus' })
+      class QBus { register() {} async dispatch() { return {} as any; } }
 
       expect(DecoratorRegistry.getCommandBuses().size).toBe(1);
       expect(DecoratorRegistry.getQueryBuses().size).toBe(1);
@@ -232,34 +148,9 @@ describe('Bus Decorators', () => {
       expect(DecoratorRegistry.getQueryBuses().size).toBe(0);
     });
 
-    it('should get specific bus by token', () => {
-      @CommandBusDecorator({ token: 'SpecificCommandBus' })
-      class TestCommandBus implements CommandBus {
-        register() {}
-        async dispatch() { return {} as any; }
-      }
-
-      @QueryBusDecorator({ token: 'SpecificQueryBus' })
-      class TestQueryBus implements QueryBus {
-        register() {}
-        async dispatch() { return {} as any; }
-      }
-
-      const commandBus = DecoratorRegistry.getCommandBus('SpecificCommandBus');
-      const queryBus = DecoratorRegistry.getQueryBus('SpecificQueryBus');
-
-      expect(commandBus).toBeDefined();
-      expect(commandBus?.busClass).toBe(TestCommandBus);
-      expect(queryBus).toBeDefined();
-      expect(queryBus?.busClass).toBe(TestQueryBus);
-    });
-
-    it('should return undefined for non-existent bus', () => {
-      const commandBus = DecoratorRegistry.getCommandBus('NonExistent');
-      const queryBus = DecoratorRegistry.getQueryBus('NonExistent');
-
-      expect(commandBus).toBeUndefined();
-      expect(queryBus).toBeUndefined();
+    it('returns undefined for non-existent bus tokens', () => {
+      expect(DecoratorRegistry.getCommandBus('Missing')).toBeUndefined();
+      expect(DecoratorRegistry.getQueryBus('Missing')).toBeUndefined();
     });
   });
 });

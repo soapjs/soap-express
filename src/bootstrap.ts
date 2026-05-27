@@ -3,6 +3,7 @@ import { SoapExpressOptions, CorsOptions, RateLimitOptions, LoggingOptions } fro
 import { AuthStrategy } from './auth';
 import { HttpPlugin } from '@soapjs/soap/http';
 import { DIContainer } from '@soapjs/soap/common';
+import type { CqrsConfig } from './cqrs/wiring';
 
 // ── Config ─────────────────────────────────────────────────────────────────
 
@@ -111,6 +112,27 @@ export interface BootstrapConfig {
    * DI container passed at construction, etc.).
    */
   app?: SoapExpressOptions;
+
+  /**
+   * Enable CQRS wiring.
+   *
+   * `true` — auto-wire all handlers registered via `@CommandHandler` /
+   * `@QueryHandler` decorators using `InMemoryCommandBus` / `InMemoryQueryBus`.
+   *
+   * Pass a {@link CqrsConfig} object to supply custom bus instances or override
+   * the default DI tokens.
+   *
+   * The buses are bound in the container as `'CommandBus'` and `'QueryBus'`
+   * (overridable via `commandBusToken` / `queryBusToken`).
+   *
+   * @example
+   * // Auto-wire with defaults
+   * await bootstrap({ controllers: [UserController], cqrs: true });
+   *
+   * // Custom bus tokens
+   * await bootstrap({ cqrs: { commandBusToken: 'MyCommandBus' } });
+   */
+  cqrs?: boolean | CqrsConfig;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -185,6 +207,7 @@ export function createApp(config: BootstrapConfig = {}): SoapExpressApp {
     healthCheck,
     app: appOptions = {},
     container: userContainer,
+    cqrs,
   } = config;
 
   const app = new SoapExpressApp(appOptions);
@@ -251,6 +274,12 @@ export function createApp(config: BootstrapConfig = {}): SoapExpressApp {
   if (healthCheck) {
     const path = typeof healthCheck === 'string' ? healthCheck : '/health';
     app.healthCheck(path);
+  }
+
+  // ── 7. CQRS wiring (lazy require to keep HTTP-only bundles clean) ─────────
+  if (cqrs) {
+    const { wireCqrs } = require('./cqrs/wiring');
+    wireCqrs(app.getContainer(), typeof cqrs === 'object' ? cqrs : {});
   }
 
   return app;

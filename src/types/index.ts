@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { RequestMethod, DIContainer, IO, RouteAdditionalOptions, HttpApp, HttpPlugin } from '@soapjs/soap';
+import { RequestMethod, RouteAdditionalOptions, HttpPlugin } from '@soapjs/soap/http';
+import { IO } from '@soapjs/soap/middleware';
+import { DIContainer } from '@soapjs/soap/common';
 
 // Express-specific IO interface that maps to @soapjs/soap IO
 export interface ExpressIO<I = unknown, O = unknown> extends IO<I, O> {
@@ -47,6 +49,12 @@ export interface AuthOptions {
   required: boolean;
   roles?: string[];
   secret?: string;
+  /**
+   * Verifies a bearer token and resolves to the authenticated user, or a
+   * falsy value if the token is invalid. Required when `required` is true —
+   * there is no built-in/default verifier (the middleware fails closed).
+   */
+  verify?: (token: string, secret?: string) => any | Promise<any>;
 }
 
 export interface ValidationOptions {

@@ -1,8 +1,9 @@
-import rateLimit from 'express-rate-limit';
+// Lazy-loaded — express-rate-limit is only require()'d when a route uses it.
 import { RateLimitOptions } from '../types';
 
 export class RateLimitMiddleware {
   static create(options: RateLimitOptions) {
+    const rateLimit = require('express-rate-limit');
     return rateLimit({
       windowMs: options.windowMs,
       max: options.max,
@@ -15,25 +16,28 @@ export class RateLimitMiddleware {
   }
 
   static createStrict() {
+    const rateLimit = require('express-rate-limit');
     return rateLimit({
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100, // limit each IP to 100 requests per windowMs
+      windowMs: 15 * 60 * 1000,
+      max: 100,
       message: 'Too many requests from this IP, please try again later.'
     });
   }
 
   static createLoose() {
+    const rateLimit = require('express-rate-limit');
     return rateLimit({
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 1000, // limit each IP to 1000 requests per windowMs
+      windowMs: 15 * 60 * 1000,
+      max: 1000,
       message: 'Too many requests from this IP, please try again later.'
     });
   }
 
   static createDefault() {
+    const rateLimit = require('express-rate-limit');
     return rateLimit({
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100, // limit each IP to 100 requests per windowMs
+      windowMs: 15 * 60 * 1000,
+      max: 100,
       message: 'Too many requests from this IP, please try again later.'
     });
   }

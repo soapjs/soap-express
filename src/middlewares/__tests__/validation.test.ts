@@ -1,295 +1,272 @@
-import { ValidationMiddleware } from '../validation';
+import { ValidationMiddleware, ValidatorFn, joiAdapter, zodAdapter } from '../validation';
 import { Request, Response, NextFunction } from 'express';
 
-// Mock Joi schema for testing
-const mockSchema = {
-  validate: jest.fn()
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function mockRes(): Partial<Response> {
+  return {
+    status: jest.fn().mockReturnThis(),
+    json: jest.fn(),
+  };
+}
+
+const mockNext: NextFunction = jest.fn();
+
+function resetNext() {
+  (mockNext as jest.Mock).mockClear();
+}
+
+// ── ValidatorFn factories (no Joi/Zod dependency) ─────────────────────────────
+
+const passValidator: ValidatorFn = (data) => ({ valid: true, value: data });
+
+const failValidator: ValidatorFn = () => ({
+  valid: false,
+  errors: [{ field: 'email', message: 'Email is required' }],
+});
+
+const throwingValidator: ValidatorFn = () => {
+  throw new Error('validator exploded');
 };
 
-describe('ValidationMiddleware', () => {
-  let mockReq: Partial<Request>;
-  let mockRes: Partial<Response>;
-  let mockNext: NextFunction;
+const asyncPassValidator: ValidatorFn = async (data) => ({ valid: true, value: data });
+
+// ── ValidationMiddleware.create ───────────────────────────────────────────────
+
+describe('ValidationMiddleware.create (body)', () => {
+  let req: Partial<Request>;
+  let res: Partial<Response>;
 
   beforeEach(() => {
-    mockReq = {
-      body: { name: 'test', email: 'test@example.com' },
-      query: { page: '1', limit: '10' },
-      params: { id: '123' }
+    resetNext();
+    req = { body: { name: 'Alice', email: 'alice@example.com' } };
+    res = mockRes();
+  });
+
+  it('returns a middleware function', () => {
+    expect(typeof ValidationMiddleware.create(passValidator)).toBe('function');
+  });
+
+  it('calls next() and replaces body with coerced value on success', async () => {
+    const coerced = { name: 'Alice', email: 'alice@example.com', _coerced: true };
+    const validator: ValidatorFn = () => ({ valid: true, value: coerced });
+
+    await ValidationMiddleware.create(validator)(req as Request, res as Response, mockNext);
+
+    expect(mockNext).toHaveBeenCalled();
+    expect(req.body).toBe(coerced);
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('keeps original body when validator returns no value', async () => {
+    const original = { name: 'Alice' };
+    req.body = original;
+    const validator: ValidatorFn = () => ({ valid: true }); // no value
+
+    await ValidationMiddleware.create(validator)(req as Request, res as Response, mockNext);
+
+    expect(mockNext).toHaveBeenCalled();
+    expect(req.body).toBe(original);
+  });
+
+  it('responds 400 with errors when validation fails', async () => {
+    await ValidationMiddleware.create(failValidator)(req as Request, res as Response, mockNext);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Validation failed',
+      details: [{ field: 'email', message: 'Email is required' }],
+    });
+    expect(mockNext).not.toHaveBeenCalled();
+  });
+
+  it('responds 400 with empty details array when no errors provided', async () => {
+    const noErrorsValidator: ValidatorFn = () => ({ valid: false });
+    await ValidationMiddleware.create(noErrorsValidator)(req as Request, res as Response, mockNext);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Validation failed', details: [] });
+  });
+
+  it('responds 500 when the validator throws', async () => {
+    await ValidationMiddleware.create(throwingValidator)(req as Request, res as Response, mockNext);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Validation error' });
+    expect(mockNext).not.toHaveBeenCalled();
+  });
+
+  it('works with an async validator', async () => {
+    await ValidationMiddleware.create(asyncPassValidator)(req as Request, res as Response, mockNext);
+    expect(mockNext).toHaveBeenCalled();
+  });
+});
+
+// ── ValidationMiddleware.createQuery ──────────────────────────────────────────
+
+describe('ValidationMiddleware.createQuery', () => {
+  let req: Partial<Request>;
+  let res: Partial<Response>;
+
+  beforeEach(() => {
+    resetNext();
+    req = { query: { page: '1', limit: '10' } as any };
+    res = mockRes();
+  });
+
+  it('validates req.query and replaces it with coerced value', async () => {
+    const coerced = { page: 1, limit: 10 };
+    const validator: ValidatorFn = () => ({ valid: true, value: coerced });
+
+    await ValidationMiddleware.createQuery(validator)(req as Request, res as Response, mockNext);
+
+    expect(mockNext).toHaveBeenCalled();
+    expect(req.query).toBe(coerced);
+  });
+
+  it('responds 400 on query validation failure', async () => {
+    await ValidationMiddleware.createQuery(failValidator)(req as Request, res as Response, mockNext);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: 'Query validation failed' })
+    );
+    expect(mockNext).not.toHaveBeenCalled();
+  });
+
+  it('responds 500 when the validator throws', async () => {
+    await ValidationMiddleware.createQuery(throwingValidator)(req as Request, res as Response, mockNext);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Query validation error' });
+  });
+});
+
+// ── ValidationMiddleware.createParams ─────────────────────────────────────────
+
+describe('ValidationMiddleware.createParams', () => {
+  let req: Partial<Request>;
+  let res: Partial<Response>;
+
+  beforeEach(() => {
+    resetNext();
+    req = { params: { id: '123' } as any };
+    res = mockRes();
+  });
+
+  it('validates req.params and replaces it with coerced value', async () => {
+    const coerced = { id: 123 };
+    const validator: ValidatorFn = () => ({ valid: true, value: coerced });
+
+    await ValidationMiddleware.createParams(validator)(req as Request, res as Response, mockNext);
+
+    expect(mockNext).toHaveBeenCalled();
+    expect(req.params).toBe(coerced);
+  });
+
+  it('responds 400 on params validation failure', async () => {
+    await ValidationMiddleware.createParams(failValidator)(req as Request, res as Response, mockNext);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: 'Parameter validation failed' })
+    );
+    expect(mockNext).not.toHaveBeenCalled();
+  });
+
+  it('responds 500 when the validator throws', async () => {
+    await ValidationMiddleware.createParams(throwingValidator)(req as Request, res as Response, mockNext);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Parameter validation error' });
+  });
+});
+
+// ── joiAdapter ────────────────────────────────────────────────────────────────
+
+describe('joiAdapter', () => {
+  it('returns valid: true and coerced value when schema passes', () => {
+    const schema = {
+      validate: jest.fn().mockReturnValue({ error: null, value: { name: 'Alice' } }),
     };
-    mockRes = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn()
+
+    const result = joiAdapter(schema)({ name: 'Alice' });
+
+    expect(result).toEqual({ valid: true, value: { name: 'Alice' } });
+    expect(schema.validate).toHaveBeenCalledWith({ name: 'Alice' }, { abortEarly: false });
+  });
+
+  it('returns valid: false with mapped errors when schema fails', () => {
+    const schema = {
+      validate: jest.fn().mockReturnValue({
+        error: {
+          details: [
+            { path: ['email'], message: 'Email is required' },
+            { path: ['user', 'profile', 'age'], message: 'Must be a number' },
+          ],
+        },
+        value: null,
+      }),
     };
-    mockNext = jest.fn();
-    
-    // Reset mock
-    mockSchema.validate.mockClear();
+
+    const result = joiAdapter(schema)({}) as any;
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual([
+      { field: 'email', message: 'Email is required' },
+      { field: 'user.profile.age', message: 'Must be a number' },
+    ]);
   });
 
-  describe('create', () => {
-    it('should create validation middleware', () => {
-      const middleware = ValidationMiddleware.create(mockSchema);
+  it('handles missing details array gracefully', () => {
+    const schema = {
+      validate: jest.fn().mockReturnValue({ error: {}, value: null }),
+    };
+    const result = joiAdapter(schema)({}) as any;
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual([]);
+  });
+});
 
-      expect(middleware).toBeDefined();
-      expect(typeof middleware).toBe('function');
-    });
+// ── zodAdapter ────────────────────────────────────────────────────────────────
 
-    it('should pass validation and call next()', async () => {
-      mockSchema.validate.mockReturnValue({
-        error: null,
-        value: { name: 'test', email: 'test@example.com' }
-      });
+describe('zodAdapter', () => {
+  it('returns valid: true and parsed data on success', () => {
+    const schema = {
+      safeParse: jest.fn().mockReturnValue({ success: true, data: { name: 'Alice' } }),
+    };
 
-      const middleware = ValidationMiddleware.create(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
+    const result = zodAdapter(schema)({ name: 'Alice' });
 
-      expect(mockSchema.validate).toHaveBeenCalledWith(mockReq.body);
-      expect(mockReq.body).toEqual({ name: 'test', email: 'test@example.com' });
-      expect(mockNext).toHaveBeenCalled();
-      expect(mockRes.status).not.toHaveBeenCalled();
-    });
-
-    it('should return 400 on validation error', async () => {
-      const validationError = {
-        details: [
-          { path: ['email'], message: 'Email is required' },
-          { path: ['name'], message: 'Name must be a string' }
-        ]
-      };
-      mockSchema.validate.mockReturnValue({
-        error: validationError,
-        value: null
-      });
-
-      const middleware = ValidationMiddleware.create(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockRes.status).toHaveBeenCalledWith(400);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        error: 'Validation failed',
-        details: [
-          { field: 'email', message: 'Email is required' },
-          { field: 'name', message: 'Name must be a string' }
-        ]
-      });
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-
-    it('should return 500 on validation exception', async () => {
-      mockSchema.validate.mockImplementation(() => {
-        throw new Error('Schema validation error');
-      });
-
-      const middleware = ValidationMiddleware.create(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Validation error' });
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-
-    it('should handle empty validation details', async () => {
-      const validationError = {
-        details: []
-      };
-      mockSchema.validate.mockReturnValue({
-        error: validationError,
-        value: null
-      });
-
-      const middleware = ValidationMiddleware.create(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockRes.status).toHaveBeenCalledWith(400);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        error: 'Validation failed',
-        details: []
-      });
-    });
+    expect(result).toEqual({ valid: true, value: { name: 'Alice' } });
   });
 
-  describe('createQuery', () => {
-    it('should create query validation middleware', () => {
-      const middleware = ValidationMiddleware.createQuery(mockSchema);
+  it('returns valid: false with mapped errors on failure', () => {
+    const schema = {
+      safeParse: jest.fn().mockReturnValue({
+        success: false,
+        error: {
+          errors: [
+            { path: ['email'], message: 'Invalid email' },
+            { path: ['age'], message: 'Expected number' },
+          ],
+        },
+      }),
+    };
 
-      expect(middleware).toBeDefined();
-      expect(typeof middleware).toBe('function');
-    });
+    const result = zodAdapter(schema)({}) as any;
 
-    it('should validate query parameters', async () => {
-      mockSchema.validate.mockReturnValue({
-        error: null,
-        value: { page: 1, limit: 10 }
-      });
-
-      const middleware = ValidationMiddleware.createQuery(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockSchema.validate).toHaveBeenCalledWith({ page: '1', limit: '10' });
-      expect(mockReq.query).toEqual({ page: 1, limit: 10 });
-      expect(mockNext).toHaveBeenCalled();
-    });
-
-    it('should return 400 on query validation error', async () => {
-      const validationError = {
-        details: [
-          { path: ['page'], message: 'Page must be a number' }
-        ]
-      };
-      mockSchema.validate.mockReturnValue({
-        error: validationError,
-        value: null
-      });
-
-      const middleware = ValidationMiddleware.createQuery(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockRes.status).toHaveBeenCalledWith(400);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        error: 'Query validation failed',
-        details: [
-          { field: 'page', message: 'Page must be a number' }
-        ]
-      });
-    });
-
-    it('should return 500 on query validation exception', async () => {
-      mockSchema.validate.mockImplementation(() => {
-        throw new Error('Query validation error');
-      });
-
-      const middleware = ValidationMiddleware.createQuery(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Query validation error' });
-    });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual([
+      { field: 'email', message: 'Invalid email' },
+      { field: 'age', message: 'Expected number' },
+    ]);
   });
 
-  describe('createParams', () => {
-    it('should create params validation middleware', () => {
-      const middleware = ValidationMiddleware.createParams(mockSchema);
-
-      expect(middleware).toBeDefined();
-      expect(typeof middleware).toBe('function');
-    });
-
-    it('should validate route parameters', async () => {
-      mockSchema.validate.mockReturnValue({
-        error: null,
-        value: { id: 123 }
-      });
-
-      const middleware = ValidationMiddleware.createParams(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockSchema.validate).toHaveBeenCalledWith({ id: '123' });
-      expect(mockReq.params).toEqual({ id: 123 });
-      expect(mockNext).toHaveBeenCalled();
-    });
-
-    it('should return 400 on params validation error', async () => {
-      const validationError = {
-        details: [
-          { path: ['id'], message: 'ID must be a valid UUID' }
-        ]
-      };
-      mockSchema.validate.mockReturnValue({
-        error: validationError,
-        value: null
-      });
-
-      const middleware = ValidationMiddleware.createParams(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockRes.status).toHaveBeenCalledWith(400);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        error: 'Parameter validation failed',
-        details: [
-          { field: 'id', message: 'ID must be a valid UUID' }
-        ]
-      });
-    });
-
-    it('should return 500 on params validation exception', async () => {
-      mockSchema.validate.mockImplementation(() => {
-        throw new Error('Params validation error');
-      });
-
-      const middleware = ValidationMiddleware.createParams(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Parameter validation error' });
-    });
-  });
-
-  describe('edge cases', () => {
-    it('should handle undefined request body', async () => {
-      mockReq.body = undefined;
-      mockSchema.validate.mockReturnValue({
-        error: null,
-        value: undefined
-      });
-
-      const middleware = ValidationMiddleware.create(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockSchema.validate).toHaveBeenCalledWith(undefined);
-      expect(mockNext).toHaveBeenCalled();
-    });
-
-    it('should handle undefined query parameters', async () => {
-      mockReq.query = undefined;
-      mockSchema.validate.mockReturnValue({
-        error: null,
-        value: undefined
-      });
-
-      const middleware = ValidationMiddleware.createQuery(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockSchema.validate).toHaveBeenCalledWith(undefined);
-      expect(mockNext).toHaveBeenCalled();
-    });
-
-    it('should handle undefined route parameters', async () => {
-      mockReq.params = undefined;
-      mockSchema.validate.mockReturnValue({
-        error: null,
-        value: undefined
-      });
-
-      const middleware = ValidationMiddleware.createParams(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockSchema.validate).toHaveBeenCalledWith(undefined);
-      expect(mockNext).toHaveBeenCalled();
-    });
-
-    it('should handle complex validation error paths', async () => {
-      const validationError = {
-        details: [
-          { path: ['user', 'profile', 'email'], message: 'Email is invalid' },
-          { path: ['items', 0, 'name'], message: 'Item name is required' }
-        ]
-      };
-      mockSchema.validate.mockReturnValue({
-        error: validationError,
-        value: null
-      });
-
-      const middleware = ValidationMiddleware.create(mockSchema);
-      await middleware(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockRes.json).toHaveBeenCalledWith({
-        error: 'Validation failed',
-        details: [
-          { field: 'user.profile.email', message: 'Email is invalid' },
-          { field: 'items.0.name', message: 'Item name is required' }
-        ]
-      });
-    });
+  it('handles missing error object gracefully', () => {
+    const schema = {
+      safeParse: jest.fn().mockReturnValue({ success: false }),
+    };
+    const result = zodAdapter(schema)({}) as any;
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual([]);
   });
 });

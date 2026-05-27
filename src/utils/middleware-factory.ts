@@ -1,4 +1,4 @@
-import { MiddlewareMetadata } from '@soapjs/soap';
+import { MiddlewareMetadata } from '@soapjs/soap/http';
 
 import { AuthenticationMiddleware, AuthorizationMiddleware } from '../middlewares/auth';
 import { ValidationMiddleware } from '../middlewares/validation';

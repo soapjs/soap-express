@@ -7,5 +7,14 @@
   "coverageProvider": "v8",
   "testMatch": ["**/__tests__/**/*.test.ts"],
   "testPathIgnorePatterns": ["/node_modules/", "/build/", ".*integration.*", "/examples/"],
-  "testTimeout": 10000
+  "testTimeout": 10000,
+  "moduleNameMapper": {
+    "^@soapjs/soap/http$":        "<rootDir>/node_modules/@soapjs/soap/build/infra/http",
+    "^@soapjs/soap/middleware$":  "<rootDir>/node_modules/@soapjs/soap/build/infra/common",
+    "^@soapjs/soap/common$":      "<rootDir>/node_modules/@soapjs/soap/build/common",
+    "^@soapjs/soap/cqrs$":        "<rootDir>/node_modules/@soapjs/soap/build/cqrs",
+    "^@soapjs/soap/domain$":      "<rootDir>/node_modules/@soapjs/soap/build/domain",
+    "^@soapjs/soap/data$":        "<rootDir>/node_modules/@soapjs/soap/build/data",
+    "^@soapjs/soap/config$":      "<rootDir>/node_modules/@soapjs/soap/build/config"
+  }
 }

@@ -1,5 +1,4 @@
 // Main auth exports
-export * from './types';
 export * from './registry';
 export * from './middleware-factory';
 
@@ -11,5 +10,5 @@ export type {
   RoleConfig, 
   AuthStrategy,
   SessionConfig 
-} from '@soapjs/soap';
-export { AuthType } from '@soapjs/soap';
+} from '@soapjs/soap/http';
+export { AuthType } from '@soapjs/soap/http';

@@ -1,5 +1,5 @@
 import { DecoratorRegistry } from './registry';
-import { MiddlewareMetadata } from '@soapjs/soap';
+import { MiddlewareMetadata } from '@soapjs/soap/http';
 
 export function Cors(options: any) {
   return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {

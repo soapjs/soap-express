@@ -1,4 +1,4 @@
-import { AuthStrategy } from '@soapjs/soap';
+import { AuthStrategy } from '@soapjs/soap/http';
 
 export class AuthRegistry {
   private strategies = new Map<string, AuthStrategy>();

@@ -1,6 +1,10 @@
 import { AuthenticationMiddleware, AuthorizationMiddleware } from '../auth';
 import { Request, Response, NextFunction } from 'express';
 
+// Test verifier standing in for a real JWT verification function.
+const verify = async (token: string) =>
+  token === 'valid-token' ? { id: 'user-id', roles: ['user'] } : null;
+
 describe('AuthenticationMiddleware', () => {
   let mockReq: Partial<Request>;
   let mockRes: Partial<Response>;
@@ -41,9 +45,21 @@ describe('AuthenticationMiddleware', () => {
       expect(mockNext).not.toHaveBeenCalled();
     });
 
+    it('should return 500 when no verifier is configured (fail closed)', async () => {
+      mockReq.headers = { authorization: 'Bearer some-token' };
+      const options = { required: true, secret: 'test-secret' };
+      const middleware = AuthenticationMiddleware.create(options);
+
+      await middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({ error: 'No token verifier configured' });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
     it('should return 401 when invalid token is provided', async () => {
       mockReq.headers = { authorization: 'Bearer invalid-token' };
-      const options = { required: true, secret: 'test-secret' };
+      const options = { required: true, secret: 'test-secret', verify };
       const middleware = AuthenticationMiddleware.create(options);
 
       await middleware(mockReq as Request, mockRes as Response, mockNext);
@@ -55,7 +71,7 @@ describe('AuthenticationMiddleware', () => {
 
     it('should call next() when valid token is provided', async () => {
       mockReq.headers = { authorization: 'Bearer valid-token' };
-      const options = { required: true, secret: 'test-secret' };
+      const options = { required: true, secret: 'test-secret', verify };
       const middleware = AuthenticationMiddleware.create(options);
 
       await middleware(mockReq as Request, mockRes as Response, mockNext);
@@ -66,10 +82,11 @@ describe('AuthenticationMiddleware', () => {
 
     it('should return 403 when user lacks required roles', async () => {
       mockReq.headers = { authorization: 'Bearer valid-token' };
-      const options = { 
-        required: true, 
+      const options = {
+        required: true,
         secret: 'test-secret',
-        roles: ['admin']
+        roles: ['admin'],
+        verify
       };
       const middleware = AuthenticationMiddleware.create(options);
 
@@ -82,10 +99,11 @@ describe('AuthenticationMiddleware', () => {
 
     it('should call next() when user has required roles', async () => {
       mockReq.headers = { authorization: 'Bearer valid-token' };
-      const options = { 
-        required: true, 
+      const options = {
+        required: true,
         secret: 'test-secret',
-        roles: ['user']
+        roles: ['user'],
+        verify
       };
       const middleware = AuthenticationMiddleware.create(options);
 
@@ -97,10 +115,11 @@ describe('AuthenticationMiddleware', () => {
 
     it('should handle multiple required roles', async () => {
       mockReq.headers = { authorization: 'Bearer valid-token' };
-      const options = { 
-        required: true, 
+      const options = {
+        required: true,
         secret: 'test-secret',
-        roles: ['admin', 'moderator']
+        roles: ['admin', 'moderator'],
+        verify
       };
       const middleware = AuthenticationMiddleware.create(options);
 

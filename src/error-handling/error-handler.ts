@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { Result } from '@soapjs/soap';
+import { Result } from '@soapjs/soap/common';
 
 export interface ErrorHandlerOptions {
   logger?: (error: Error, req: Request, res: Response) => void;
@@ -178,33 +178,6 @@ export class ErrorHandler {
       default:
         return 'Internal server error';
     }
-
-    // Default messages for common error types
-    if (error.name === 'ValidationError') {
-      return 'Validation failed';
-    }
-
-    if (error.name === 'UnauthorizedError') {
-      return 'Unauthorized';
-    }
-
-    if (error.name === 'ForbiddenError') {
-      return 'Forbidden';
-    }
-
-    if (error.name === 'NotFoundError') {
-      return 'Not found';
-    }
-
-    if (error.name === 'ConflictError') {
-      return 'Conflict';
-    }
-
-    if (error.name === 'RateLimitError') {
-      return 'Too many requests';
-    }
-
-    return 'Internal server error';
   }
 
   private sanitizeHeaders(headers: any): any {

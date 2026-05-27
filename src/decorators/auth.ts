@@ -1,4 +1,4 @@
-import { RoleConfig } from '@soapjs/soap';
+import { RoleConfig } from '@soapjs/soap/http';
 
 export interface AuthDecoratorOptions {
   strategy?: string;

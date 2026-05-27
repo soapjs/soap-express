@@ -5,8 +5,8 @@ describe('SoapExpress Module Exports', () => {
     expect(SoapExpress.SoapExpressApp).toBeDefined();
   });
 
-  it('should export SoapRouter', () => {
-    expect(SoapExpress.SoapRouter).toBeDefined();
+  it('should export ExpressRouter', () => {
+    expect(SoapExpress.ExpressRouter).toBeDefined();
   });
 
   it('should export RouteIO classes', () => {

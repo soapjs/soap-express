@@ -1,13 +1,40 @@
 import { Express, Request, Response, NextFunction } from 'express';
 import { DecoratorRegistry } from '../decorators/registry';
 import { MiddlewareFactory } from './middleware-factory';
-import { Route, RouteGroup, DIContainer, RouteAdditionalOptions, MiddlewareMetadata, RouteMetadata } from '@soapjs/soap';
+import { Route, RouteGroup, RouteAdditionalOptions, MiddlewareMetadata, RouteMetadata } from '@soapjs/soap/http';
+import { DIContainer, Result } from '@soapjs/soap/common';
+import { ResultMapper } from '../result-mapper';
 
 export class RouteBuilder {
   private middlewareFactory: MiddlewareFactory;
 
   constructor(private app: Express, private container: DIContainer, private errorHandler?: any) {
     this.middlewareFactory = new MiddlewareFactory();
+  }
+
+  /**
+   * Dispatch a handler result to the Express response.
+   *
+   * - `Result<T>` → delegated to {@link ResultMapper} (auto status mapping)
+   * - RouteIO present → `routeIO.to(result, res)`
+   * - Anything else → `res.json(result)` (or no-op if already written)
+   */
+  private dispatchResult(
+    value: unknown,
+    res: Response,
+    routeIO?: any
+  ): void {
+    if (value instanceof Result) {
+      ResultMapper.toResponse(value, res);
+      return;
+    }
+    if (routeIO) {
+      routeIO.to(value, res);
+      return;
+    }
+    if (value !== undefined && !res.headersSent) {
+      res.json(value);
+    }
   }
 
   registerController(controller: any) {
@@ -40,36 +67,19 @@ export class RouteBuilder {
       
       this.app[method.toLowerCase()](route.path, ...middlewares, async (req: Request, res: Response, next: NextFunction) => {
         try {
-          let result;          
+          let result;
           if (route.useCase) {
-            // UseCase execution
             const useCase = this.container.get(route.useCase.name);
             const input = route.routeIO ? route.routeIO.from(req) : req.body;
             result = await (useCase as any).execute(input);
-            
-            // Response mapping
-            if (route.routeIO) {
-              route.routeIO.to(result, res);
-            } else {
-              res.json(result);
-            }
           } else if (route.handler) {
-            // Handler execution
             result = await route.handler(req, res);
-            
-            // Response mapping
-            if (route.routeIO) {
-              route.routeIO.to(result, res);
-            } else {
-              res.json(result);
-            }
           }
+          this.dispatchResult(result, res, route.routeIO);
         } catch (error) {
           if (this.errorHandler) {
-            // Use ErrorHandler with router error handler
             this.errorHandler.handle(error, req, res, routerErrorHandler);
           } else {
-            // Fallback to Express error middleware
             next(error);
           }
         }
@@ -95,38 +105,22 @@ export class RouteBuilder {
     this.app[metadata.method.toLowerCase()](fullPath, ...allMiddlewares, async (req: Request, res: Response, next: NextFunction) => {
       try {
         let result;
-        
+
         if (metadata.useCase) {
-          // UseCase execution
           const useCase = this.container.get(metadata.useCase.name);
           const input = metadata.routeIO ? metadata.routeIO.from(req) : req.body;
           result = await (useCase as any).execute(input);
-          
-          // Response mapping
-          if (metadata.routeIO) {
-            metadata.routeIO.to(result, res);
-          } else {
-            res.json(result);
-          }
         } else {
-          // Handler execution
           const propertyKey = this.getPropertyKey(controller.name, metadata);
           result = await controllerInstance[propertyKey](req, res);
-          
-          // Response mapping
-          if (metadata.routeIO) {
-            metadata.routeIO.to(result, res);
-          } else {
-            res.json(result);
-          }
         }
+
+        this.dispatchResult(result, res, metadata.routeIO);
       } catch (error) {
         const e = error as Error;
         if (this.errorHandler) {
-          // Use ErrorHandler without route-specific error handler (deprecated)
           this.errorHandler.handle(e, req, res);
         } else {
-          // Fallback to Express error middleware
           next(e);
         }
       }
@@ -202,25 +196,25 @@ export class RouteBuilder {
       methods.forEach(method => {
         const middlewares = this.buildRouteMiddlewares(route.options);
         
-        this.app[method.toLowerCase()](path, ...middlewares, async (req: Request, res: Response) => {
+        this.app[method.toLowerCase()](path, ...middlewares, async (req: Request, res: Response, next: NextFunction) => {
           try {
             let result;
-            
+
             if (route.io) {
               const input = route.io.from(req);
               result = await route.handler(input);
-              route.io.to(result, res);
             } else {
               result = await route.handler(req, res);
-              if (result !== undefined) {
-                res.json(result);
-              }
             }
+
+            this.dispatchResult(result, res, route.io);
           } catch (error) {
             if ((route as any).errorHandler) {
               (route as any).errorHandler.handler(error, req, res);
+            } else if (this.errorHandler) {
+              this.errorHandler.handle(error, req, res);
             } else {
-              res.status(500).json({ error: (error as Error).message });
+              next(error);
             }
           }
         });

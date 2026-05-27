@@ -14,7 +14,15 @@ export class AuthenticationMiddleware {
           return res.status(401).json({ error: 'No token provided' });
         }
 
-        const decoded = this.verifyToken(token, options.secret);
+        // No magic tokens: a verifier MUST be supplied. Fail closed when it is
+        // missing so a misconfigured app rejects requests instead of granting
+        // access. For real JWT handling use a pluggable AuthStrategy or pass
+        // `verify` (e.g. wrapping `jsonwebtoken`).
+        if (typeof options.verify !== 'function') {
+          return res.status(500).json({ error: 'No token verifier configured' });
+        }
+
+        const decoded = await options.verify(token, options.secret);
         if (!decoded) {
           return res.status(401).json({ error: 'Invalid token' });
         }
@@ -41,20 +49,6 @@ export class AuthenticationMiddleware {
       return authHeader.substring(7);
     }
     return null;
-  }
-
-  private static verifyToken(token: string, secret?: string): any {
-    // This is a simplified implementation
-    // In real app, use JWT library
-    try {
-      // Mock verification - replace with actual JWT verification
-      if (token === 'valid-token') {
-        return { id: 'user-id', roles: ['user'] };
-      }
-      return null;
-    } catch {
-      return null;
-    }
   }
 
   private static hasRequiredRole(userRoles: string[], requiredRoles: string[]): boolean {

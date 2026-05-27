@@ -419,7 +419,7 @@ describe('RouteBuilder', () => {
   });
 
   describe('error handling', () => {
-    it('should handle errors in route execution', async () => {
+    it('should handle errors in route execution by calling next(error)', async () => {
       const mockRoute = {
         method: 'GET',
         path: '/test',
@@ -432,14 +432,16 @@ describe('RouteBuilder', () => {
         status: jest.fn().mockReturnThis(),
         json: jest.fn()
       };
+      const mockNext = jest.fn();
 
       routeBuilder.registerRoute(mockRoute as any);
 
       const routeHandler = mockApp.get.mock.calls[0][1];
-      await routeHandler(mockReq, mockRes);
+      await routeHandler(mockReq, mockRes, mockNext);
 
-      expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Test error' });
+      // No errorHandler registered → delegates to Express via next()
+      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
+      expect(mockRes.status).not.toHaveBeenCalledWith(500);
     });
 
     it('should use custom error handler if provided', async () => {

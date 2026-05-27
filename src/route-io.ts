@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
-import { Result, IO } from '@soapjs/soap';
+import { Result } from '@soapjs/soap/common';
+import { IO } from '@soapjs/soap/middleware';
 import { RequestWithFile, ExpressIO, UploadedFile } from './types';
 
 

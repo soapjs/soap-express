@@ -1,4 +1,4 @@
-import { RouteMetadata, ControllerMetadata } from '@soapjs/soap';
+import { RouteMetadata, ControllerMetadata } from '@soapjs/soap/http';
 // CQRS metadata interfaces
 export interface CommandHandlerMetadata {
   commandType: new (...args: any[]) => any;

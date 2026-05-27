@@ -1,12 +1,19 @@
 // Main exports for @soapjs/soap-express
+// Import domain/core primitives directly from @soapjs/soap.
+// This entry point covers HTTP concerns only; CQRS decorators live in @soapjs/soap-express/cqrs.
 export { SoapExpressApp } from './app';
-export { SoapRouter } from './router';
+export { createApp, bootstrap } from './bootstrap';
+export type { BootstrapConfig } from './bootstrap';
+export { HttpFailure } from './http-failure';
+export { ResultMapper } from './result-mapper';
+export type { ResultMapOptions } from './result-mapper';
+export { ExpressRouter } from './infra/http/router';
 export { PaginationIO, FileUploadIO, SimpleIO } from './route-io';
 
-// Decorators
+// Decorators (HTTP + auth; CQRS excluded — see /cqrs entry)
 export * from './decorators';
 
-// Middlewares
+// Middlewares + validation adapters
 export * from './middlewares';
 
 // Error Handling
@@ -18,10 +25,12 @@ export * from './types';
 // Utils
 export * from './utils';
 
-
-// Re-export @soapjs/soap infra/http and common components
+// ── Convenience re-exports from @soapjs/soap (HTTP-only slice) ───────────────
+// These are the types developers most commonly reach for when building an HTTP
+// service. Importing them here does NOT add memory overhead — they are already
+// loaded by this package's own code through the deep-path imports above.
 export {
-  // Route system
+  // Route builders
   Route,
   GetRoute,
   PostRoute,
@@ -35,54 +44,81 @@ export {
   AllRoute,
   RouteGroup,
   RouteRegistry,
-  
-  // Types
-  RequestMethod,
-  RouteConfig,
-  RouteAdditionalOptions,
-  RouteCorsOptions,
-  RouteSecurityOptions,
-  RouteRateLimitOptions,
-  RouteValidationOptions,
-  RouteCompressionOptions,
-  ValidationOptions,
+
+  // HTTP app base
+  BaseHttpApp,
+  HttpPlugin,
+  Router,
+
+  // Auth types (runtime)
+  AuthType,
+
+  // Middleware
   MiddlewareType,
-  AnyHandler,
-  HandlerResult,
-  HttpRequest,
-  HttpResponse,
-  HttpContext,
+
+  // Error classes — throw these from controllers/handlers
+  HttpError,
+  UnsupportedHttpMethodError,
+  InvalidRoutePathError,
+  NotImplementedError,
+
+  // Built-in plugins
+  HealthCheckPlugin,
+  PingPlugin,
+} from '@soapjs/soap/http';
+
+export type {
+  // Auth interfaces — used to type req.user and auth strategies
   AuthUser,
   AuthRequest,
-  AuthType,
   AuthStrategy,
   AuthConfig,
   RoleConfig,
   SessionConfig,
-  
-  // Common components
-  IO,
-  Middleware,
-  MiddlewareFunction,
-  MiddlewareRegistry,
-  MiddlewareTools,
+
+  // Framework-agnostic request/response types
+  HttpRequest,
+  HttpResponse,
+  HttpContext,
+  HttpApp,
+
+  // Route-building types
+  RequestMethod,
+  RouteAdditionalOptions,
+  AnyHandler,
+  HandlerResult,
+
+  // Plugin extension interfaces
+  PluginManager,
+
+  // Validation
+  ValidationMiddleware,
+  ValidationResult,
+} from '@soapjs/soap/http';
+
+export {
+  // Common utilities always needed in a service
   Result,
   Failure,
   ConsoleLogger,
-  
-  // HTTP App components
-  HttpApp,
-  BaseHttpApp,
-  HttpPlugin,
-  PluginManager,
-  Router,
-  
-  // Dependency Injection
   DIContainer,
   Injectable,
   Inject,
-  
-  // Validation
-  ValidationMiddleware,
-  ValidationResult
-} from '@soapjs/soap';
+
+  // DI helpers — use these for global container access
+  DI,
+  container,
+} from '@soapjs/soap/common';
+
+export {
+  // Middleware primitives
+  IO,
+  Middleware,
+  MiddlewareRegistry,
+  MiddlewareTools,
+} from '@soapjs/soap/middleware';
+
+export type {
+  // Middleware function signature
+  MiddlewareFunction,
+} from '@soapjs/soap/middleware';

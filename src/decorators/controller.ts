@@ -1,5 +1,6 @@
 import { DecoratorRegistry } from './registry';
-import { Injectable, ControllerMetadata } from '@soapjs/soap';
+import { ControllerMetadata } from '@soapjs/soap/http';
+import { Injectable } from '@soapjs/soap/common';
 
 export interface ControllerOptions {
   middlewares?: any[];

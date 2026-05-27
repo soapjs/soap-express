@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { AuthStrategy, AuthUser, RoleConfig, AuthRequest } from '@soapjs/soap';
+import { AuthStrategy, AuthUser, RoleConfig, AuthRequest } from '@soapjs/soap/http';
 import { AuthRegistry } from './registry';
 
 export class AuthMiddlewareFactory {

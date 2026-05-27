@@ -16,9 +16,9 @@ import {
   RolesOnly,
   Public,
   SelfOnly,
-  SoapRouter
+  ExpressRouter
 } from '../src';
-import { container, DI, Injectable, Inject } from '@soapjs/soap';
+import { container, Injectable, Inject } from '@soapjs/soap';
 
 // Example service with dependency injection
 @Injectable()
@@ -94,15 +94,11 @@ class UserController {
 
 // Example usage with advanced features
 async function main() {
-  // Register services
-  // Old way - still works
-  // registerClass('UserService', UserService);
-  
-  // New way - using class as token
-  DI.registerClass(UserService);
-  
-  // Alternative with custom token
-  // DI.registerClass(UserService, 'CustomUserService');
+  // Register services using the global container
+  container.autoRegister(UserService);
+
+  // Alternative with explicit token:
+  // container.bindClass('UserService', UserService);
 
   // Create app
   const app = new SoapExpressApp({
@@ -197,7 +193,7 @@ async function main() {
   app.registerRoute(adminRoute);
 
   // Example: Router with custom error handler
-  const apiRouter = new SoapRouter('/api/v3');
+  const apiRouter = new ExpressRouter('/api/v3');
   
   // Set router-level error handler
   apiRouter.setErrorHandler({

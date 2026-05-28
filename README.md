@@ -11,6 +11,7 @@ HTTP-focused Express.js integration for the @soapjs/soap framework 0.6.5+ with m
 - [Controllers & Routes](#controllers--routes)
 - [Dependency Injection](#dependency-injection)
 - [Authentication & Authorization](#authentication--authorization)
+- [CQRS & Domain Events](#cqrs--domain-events)
 - [Request/Response Transformation](#requestresponse-transformation)
 - [Advanced Routing](#advanced-routing)
 - [Middleware System](#middleware-system)
@@ -22,10 +23,11 @@ HTTP-focused Express.js integration for the @soapjs/soap framework 0.6.5+ with m
 ## Features
 
 - 🚀 **HTTP-Only Focus**: Clean separation from WebSocket functionality
-- 🔧 **Modern DI System**: Full integration with @soapjs/soap 0.6.5+ DI container
+- 🔧 **Modern DI System**: Full integration with the @soapjs/soap DI container
 - 🎯 **Decorator-Based**: Clean, declarative API using decorators
 - 🛡️ **Type Safety**: Full TypeScript support
 - 🔐 **Authentication**: Built-in auth decorators and middleware factory
+- 📨 **CQRS & Events**: `@CommandHandler` / `@QueryHandler` / `@EventHandler` with bus wiring
 - 📦 **Middleware Support**: Built-in middleware for validation, CORS, rate limiting, etc.
 - 🔄 **RouteIO**: Request/response transformation system
 - ⚡ **Express Integration**: Seamless integration with Express.js
@@ -317,9 +319,14 @@ class UserController {
 ### Auth Strategy Registration
 
 ```typescript
-// Note: Auth strategies come from @soapjs/soap-express-auth
-// import { JWTStrategy, LocalStrategy } from '@soapjs/soap-express-auth';
+// Auth strategies come from @soapjs/soap-auth.
 
+// Register ALL HTTP strategies from a SoapAuth-compatible provider in one call.
+// Accepts any object exposing listStrategies(type) + getStrategy(name, type),
+// so soap-express needs no direct dependency on soap-auth.
+app.registerAuth(soapAuth);
+
+// ...or register a single strategy directly:
 // app.registerAuthStrategy(new JWTStrategy({
 //   secret: process.env.JWT_SECRET || 'your-secret-key',
 //   algorithms: ['HS256'],
@@ -338,6 +345,62 @@ class UserController {
 //   }
 // }));
 ```
+
+## CQRS & Domain Events
+
+soap-express ships decorators that register CQRS handlers and domain-event
+consumers in the DI container at decoration time. `wireCqrs` (enabled via
+`bootstrap({ cqrs: true })`) connects command/query handlers to in-memory buses.
+
+### Commands & Queries
+
+```typescript
+import { CommandHandler, QueryHandler } from '@soapjs/soap-express/cqrs';
+import { BaseCommand, BaseQuery } from '@soapjs/soap/cqrs';
+import { Inject } from '@soapjs/soap';
+
+export class CreateUserCommand extends BaseCommand {
+  constructor(public readonly email: string) { super(); }
+}
+
+@CommandHandler(CreateUserCommand)
+export class CreateUserHandler {
+  constructor(@Inject('UserRepository') private readonly repo: UserRepository) {}
+  async handle(cmd: CreateUserCommand): Promise<Result<User>> { /* ... */ }
+}
+```
+
+With `cqrs: true`, `CommandBus` and `QueryBus` are bound in the container and
+every decorated handler is registered. Controllers inject the buses and dispatch:
+
+```typescript
+@Inject('CommandBus') private readonly commandBus: CommandBus;
+const result = await this.commandBus.dispatch(new CreateUserCommand(email));
+```
+
+### Domain Events
+
+```typescript
+import { EventHandler, IEventHandler } from '@soapjs/soap-express/cqrs';
+import { BaseDomainEvent } from '@soapjs/soap/domain';
+
+export class UserCreatedEvent extends BaseDomainEvent { /* ... */ }
+
+@EventHandler(UserCreatedEvent)
+export class SendWelcomeEmail implements IEventHandler<UserCreatedEvent> {
+  async handle(event: UserCreatedEvent): Promise<void> { /* ... */ }
+}
+```
+
+> **Multiple handlers per event (fan-out):** since **0.3.1** the default DI token is
+> `EventHandler:<eventName>:<handlerClass>`, so several handlers can subscribe to the
+> same event without colliding. (Before 0.3.1 the token was the event name alone, so a
+> second handler silently overwrote the first.) Pass `{ token }` to override it.
+
+> **Note:** `@EventHandler` only *registers* handlers in `DecoratorRegistry` — unlike
+> `wireCqrs`, soap-express does not auto-wire a domain-event bus. Dispatch is up to you:
+> read `DecoratorRegistry.getEventHandlers()` and bind/subscribe them to your bus (e.g.
+> an in-memory bus that routes by event type).
 
 ## Request/Response Transformation
 
@@ -780,7 +843,8 @@ interface SoapExpressOptions {
 - `registerRoute(route)` - Register individual route
 - `registerRouteGroup(group)` - Register route group
 - `registerMiddleware(middleware, ready?)` - Register middleware
-- `registerAuthStrategy(strategy)` - Register auth strategy
+- `registerAuthStrategy(strategy)` - Register a single auth strategy
+- `registerAuth(provider)` - Register all HTTP strategies from a soap-auth-compatible provider
 - `getRouteRegistry()` - Get route registry
 - `getMiddlewareRegistry()` - Get middleware registry
 - `getAuthRegistry()` - Get auth registry
@@ -814,6 +878,12 @@ interface SoapExpressOptions {
 - `@RolesOnly(roles, strategy?)` - Specific roles only
 - `@SelfOnly(strategy?)` - Resource owner only
 - `@Public()` - Public endpoint (no auth)
+
+#### CQRS Decorators
+
+- `@CommandHandler(commandType, options?)` - Register a command handler
+- `@QueryHandler(queryType, options?)` - Register a query handler
+- `@EventHandler(eventType, options?)` - Register a domain-event handler (pass `{ token }` for multiple handlers per event)
 
 #### Other Decorators
 

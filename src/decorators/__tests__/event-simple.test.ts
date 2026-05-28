@@ -21,10 +21,10 @@ describe('EventHandler decorator', () => {
 
       const handlers = DecoratorRegistry.getEventHandlers();
       expect(handlers.size).toBe(1);
-      expect(handlers.get('EventHandler:UserCreatedEvent')).toEqual({
+      expect(handlers.get('EventHandler:UserCreatedEvent:UserCreatedHandler')).toEqual({
         eventType: UserCreatedEvent,
         handlerClass: UserCreatedHandler,
-        token: 'EventHandler:UserCreatedEvent',
+        token: 'EventHandler:UserCreatedEvent:UserCreatedHandler',
         scope: 'singleton',
       });
     });
@@ -50,8 +50,25 @@ describe('EventHandler decorator', () => {
 
       const handlers = DecoratorRegistry.getEventHandlers();
       expect(handlers.size).toBe(2);
-      expect(handlers.has('EventHandler:UserCreatedEvent')).toBe(true);
-      expect(handlers.has('EventHandler:UserUpdatedEvent')).toBe(true);
+      expect(handlers.has('EventHandler:UserCreatedEvent:UserCreatedHandler')).toBe(true);
+      expect(handlers.has('EventHandler:UserUpdatedEvent:UserUpdatedHandler')).toBe(true);
+    });
+
+    it('registers MULTIPLE handlers for the SAME event type (fan-out)', () => {
+      class OrderPlacedEvent {}
+
+      @EventHandler(OrderPlacedEvent as any)
+      class SendEmailHandler { async handle(): Promise<void> {} }
+
+      @EventHandler(OrderPlacedEvent as any)
+      class UpdateInventoryHandler { async handle(): Promise<void> {} }
+
+      const handlers = DecoratorRegistry.getEventHandlers();
+      // Both must survive — the default token includes the handler class name,
+      // so the second handler no longer overwrites the first.
+      expect(handlers.size).toBe(2);
+      expect(handlers.has('EventHandler:OrderPlacedEvent:SendEmailHandler')).toBe(true);
+      expect(handlers.has('EventHandler:OrderPlacedEvent:UpdateInventoryHandler')).toBe(true);
     });
   });
 
@@ -74,7 +91,7 @@ describe('EventHandler decorator', () => {
       @EventHandler(AnotherEvent as any, { scope: 'transient' as any })
       class AnotherEventHandler { async handle(): Promise<void> {} }
 
-      const meta = DecoratorRegistry.getEventHandler('EventHandler:AnotherEvent');
+      const meta = DecoratorRegistry.getEventHandler('EventHandler:AnotherEvent:AnotherEventHandler');
       expect(meta?.scope).toBe('transient');
     });
   });

@@ -30,13 +30,16 @@ export interface IEventHandler<TEvent extends DomainEvent> {
 export function EventHandler<TEvent extends DomainEvent>(
   eventType: new (...args: any[]) => TEvent,
   options?: {
-    /** Override the DI token. Default: `"EventHandler:<eventType.name>"`. */
+    /** Override the DI token. Default: `"EventHandler:<eventType.name>:<handlerClass.name>"`. */
     token?: string;
     scope?: Scope;
   }
 ): ClassDecorator {
   return function (target: any) {
-    const token = options?.token ?? `EventHandler:${eventType.name}`;
+    // Include the handler class name so MULTIPLE handlers can subscribe to the
+    // SAME event type (fan-out). Keying the registry by event name alone made
+    // a second handler silently overwrite the first.
+    const token = options?.token ?? `EventHandler:${eventType.name}:${target.name}`;
     DecoratorRegistry.registerEventHandler({
       eventType,
       handlerClass: target,

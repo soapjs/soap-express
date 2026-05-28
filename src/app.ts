@@ -130,6 +130,23 @@ export class SoapExpressApp extends BaseHttpApp<Express> {
     return this;
   }
 
+  /**
+   * Registers all HTTP strategies from a SoapAuth instance (or any compatible
+   * auth provider) into this app's AuthRegistry.
+   *
+   * Accepts any object with `listStrategies(type)` and `getStrategy(name, type)`
+   * so soap-express does not need a direct dependency on soap-auth.
+   */
+  registerAuth(provider: {
+    listStrategies(type: string): string[];
+    getStrategy(name: string, type: string): AuthStrategy;
+  }): this {
+    for (const name of provider.listStrategies('http')) {
+      this.authRegistry.register(provider.getStrategy(name, 'http'));
+    }
+    return this;
+  }
+
   getAuthRegistry(): AuthRegistry {
     return this.authRegistry;
   }

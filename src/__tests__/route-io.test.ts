@@ -105,9 +105,10 @@ describe('RouteIO Classes', () => {
         paginationIO.to(successResult, mockRes as Response);
 
         expect(mockRes.json).toHaveBeenCalledWith({
-          data: paginationData,
+          data: paginationData.data,
           pagination: {
             page: 2,
+            limit: 20,
             total: 100,
             pages: 5,
             hasNext: true,
@@ -130,9 +131,10 @@ describe('RouteIO Classes', () => {
         paginationIO.to(successResult, mockRes as Response);
 
         expect(mockRes.json).toHaveBeenCalledWith({
-          data: paginationData,
+          data: paginationData.data,
           pagination: {
             page: 1,
+            limit: 0,
             total: 0,
             pages: 1,
             hasNext: false,

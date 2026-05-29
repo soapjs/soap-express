@@ -43,14 +43,16 @@ export class PaginationIO implements ExpressIO {
       else if (!res.headersSent) res.status(500).json({ error: 'Internal Server Error' });
       return;
     }
+    const { data, pagination } = result.content;
     res.json({
-      data: result.content,
+      data,
       pagination: {
-        page: result.content.pagination?.page || 1,
-        total: result.content.pagination?.total || 0,
-        pages: result.content.pagination?.pages || 1,
-        hasNext: result.content.pagination?.hasNext || false,
-        hasPrev: result.content.pagination?.hasPrev || false
+        page: pagination?.page || 1,
+        limit: pagination?.limit || 0,
+        total: pagination?.total || 0,
+        pages: pagination?.pages || 1,
+        hasNext: pagination?.hasNext || false,
+        hasPrev: pagination?.hasPrev || false
       }
     });
   }

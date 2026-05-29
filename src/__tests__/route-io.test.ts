@@ -1,6 +1,7 @@
 import { PaginationIO, FileUploadIO, SimpleIO, Pagination, FileUpload } from '../route-io';
 import { Request, Response } from 'express';
-import { Result } from '@soapjs/soap';
+import { Result, Failure } from '@soapjs/soap';
+import { ResultMapper } from '../result-mapper';
 
 describe('RouteIO Classes', () => {
   describe('PaginationIO', () => {
@@ -140,33 +141,20 @@ describe('RouteIO Classes', () => {
         });
       });
 
-      it('should send error response for failed result', () => {
-        const errorResult: Result<Pagination> = {
-          isSuccess: () => false,
-          failure: {
-            error: new Error('Database error')
-          }
-        } as any;
+      it('delegates a failed result to ResultMapper', () => {
+        const spy = jest.spyOn(ResultMapper, 'toResponse').mockImplementation(() => {});
+        const failed = Result.withFailure(Failure.fromError(new Error('Database error')));
 
-        paginationIO.to(errorResult, mockRes as Response);
+        paginationIO.to(failed, mockRes as Response);
 
-        expect(mockRes.json).toHaveBeenCalledWith({ error: 'Database error' });
+        expect(spy).toHaveBeenCalledWith(failed, mockRes);
+        spy.mockRestore();
       });
 
-      it('should send generic error for failed result without error', () => {
-        const errorResult: Result<Pagination> = {
-          isSuccess: () => false,
-          failure: {}
-        } as any;
-
-        paginationIO.to(errorResult, mockRes as Response);
-
-        expect(mockRes.json).toHaveBeenCalledWith({ error: 'Internal Server Error' });
-      });
-
-      it('should handle undefined result', () => {
+      it('sends a 500 for a missing result', () => {
         paginationIO.to(undefined as any, mockRes as Response);
 
+        expect(mockRes.status).toHaveBeenCalledWith(500);
         expect(mockRes.json).toHaveBeenCalledWith({ error: 'Internal Server Error' });
       });
     });
@@ -248,34 +236,21 @@ describe('RouteIO Classes', () => {
         });
       });
 
-      it('should send error response for failed result', () => {
-        const errorResult: Result<FileUpload> = {
-          isSuccess: () => false,
-          failure: {
-            error: new Error('Upload failed')
-          }
-        } as any;
+      it('delegates a failed result to ResultMapper', () => {
+        const spy = jest.spyOn(ResultMapper, 'toResponse').mockImplementation(() => {});
+        const failed = Result.withFailure(Failure.fromError(new Error('Upload failed')));
 
-        fileUploadIO.to(errorResult, mockRes as Response);
+        fileUploadIO.to(failed, mockRes as Response);
 
-        expect(mockRes.json).toHaveBeenCalledWith({ error: 'Upload failed' });
+        expect(spy).toHaveBeenCalledWith(failed, mockRes);
+        spy.mockRestore();
       });
 
-      it('should send generic error for failed result without error', () => {
-        const errorResult: Result<FileUpload> = {
-          isSuccess: () => false,
-          failure: {}
-        } as any;
-
-        fileUploadIO.to(errorResult, mockRes as Response);
-
-        expect(mockRes.json).toHaveBeenCalledWith({ error: 'File upload failed' });
-      });
-
-      it('should handle undefined result', () => {
+      it('sends a 500 for a missing result', () => {
         fileUploadIO.to(undefined as any, mockRes as Response);
 
-        expect(mockRes.json).toHaveBeenCalledWith({ error: 'File upload failed' });
+        expect(mockRes.status).toHaveBeenCalledWith(500);
+        expect(mockRes.json).toHaveBeenCalledWith({ error: 'Internal Server Error' });
       });
     });
   });
@@ -334,33 +309,20 @@ describe('RouteIO Classes', () => {
         expect(mockRes.json).toHaveBeenCalledWith(data);
       });
 
-      it('should send error response for failed result', () => {
-        const errorResult: Result<any> = {
-          isSuccess: () => false,
-          failure: {
-            error: new Error('Validation failed')
-          }
-        } as any;
+      it('delegates a failed result to ResultMapper', () => {
+        const spy = jest.spyOn(ResultMapper, 'toResponse').mockImplementation(() => {});
+        const failed = Result.withFailure(Failure.fromError(new Error('Validation failed')));
 
-        simpleIO.to(errorResult, mockRes as Response);
+        simpleIO.to(failed, mockRes as Response);
 
-        expect(mockRes.json).toHaveBeenCalledWith({ error: 'Validation failed' });
+        expect(spy).toHaveBeenCalledWith(failed, mockRes);
+        spy.mockRestore();
       });
 
-      it('should send generic error for failed result without error', () => {
-        const errorResult: Result<any> = {
-          isSuccess: () => false,
-          failure: {}
-        } as any;
-
-        simpleIO.to(errorResult, mockRes as Response);
-
-        expect(mockRes.json).toHaveBeenCalledWith({ error: 'Internal Server Error' });
-      });
-
-      it('should handle undefined result', () => {
+      it('sends a 500 for a missing result', () => {
         simpleIO.to(undefined as any, mockRes as Response);
 
+        expect(mockRes.status).toHaveBeenCalledWith(500);
         expect(mockRes.json).toHaveBeenCalledWith({ error: 'Internal Server Error' });
       });
     });

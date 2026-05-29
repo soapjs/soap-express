@@ -2,39 +2,14 @@ import { Express, Request, Response, NextFunction } from 'express';
 import { DecoratorRegistry } from '../decorators/registry';
 import { MiddlewareFactory } from './middleware-factory';
 import { Route, RouteGroup, RouteAdditionalOptions, MiddlewareMetadata, RouteMetadata } from '@soapjs/soap/http';
-import { DIContainer, Result } from '@soapjs/soap/common';
-import { ResultMapper } from '../result-mapper';
+import { DIContainer } from '@soapjs/soap/common';
+import { dispatchResult, resolveUseCase } from './route-dispatch';
 
 export class RouteBuilder {
   private middlewareFactory: MiddlewareFactory;
 
   constructor(private app: Express, private container: DIContainer, private errorHandler?: any) {
     this.middlewareFactory = new MiddlewareFactory();
-  }
-
-  /**
-   * Dispatch a handler result to the Express response.
-   *
-   * - `Result<T>` → delegated to {@link ResultMapper} (auto status mapping)
-   * - RouteIO present → `routeIO.to(result, res)`
-   * - Anything else → `res.json(result)` (or no-op if already written)
-   */
-  private dispatchResult(
-    value: unknown,
-    res: Response,
-    routeIO?: any
-  ): void {
-    if (value instanceof Result) {
-      ResultMapper.toResponse(value, res);
-      return;
-    }
-    if (routeIO) {
-      routeIO.to(value, res);
-      return;
-    }
-    if (value !== undefined && !res.headersSent) {
-      res.json(value);
-    }
   }
 
   registerController(controller: any) {
@@ -69,13 +44,13 @@ export class RouteBuilder {
         try {
           let result;
           if (route.useCase) {
-            const useCase = this.container.get(route.useCase.name);
+            const useCase = resolveUseCase(this.container, route.useCase);
             const input = route.routeIO ? route.routeIO.from(req) : req.body;
             result = await (useCase as any).execute(input);
           } else if (route.handler) {
             result = await route.handler(req, res);
           }
-          this.dispatchResult(result, res, route.routeIO);
+          dispatchResult(result, res, route.routeIO);
         } catch (error) {
           if (this.errorHandler) {
             this.errorHandler.handle(error, req, res, routerErrorHandler);
@@ -107,7 +82,7 @@ export class RouteBuilder {
         let result;
 
         if (metadata.useCase) {
-          const useCase = this.container.get(metadata.useCase.name);
+          const useCase = resolveUseCase(this.container, metadata.useCase);
           const input = metadata.routeIO ? metadata.routeIO.from(req) : req.body;
           result = await (useCase as any).execute(input);
         } else {
@@ -115,7 +90,7 @@ export class RouteBuilder {
           result = await controllerInstance[propertyKey](req, res);
         }
 
-        this.dispatchResult(result, res, metadata.routeIO);
+        dispatchResult(result, res, metadata.routeIO);
       } catch (error) {
         const e = error as Error;
         if (this.errorHandler) {
@@ -207,7 +182,7 @@ export class RouteBuilder {
               result = await route.handler(req, res);
             }
 
-            this.dispatchResult(result, res, route.io);
+            dispatchResult(result, res, route.io);
           } catch (error) {
             if ((route as any).errorHandler) {
               (route as any).errorHandler.handler(error, req, res);

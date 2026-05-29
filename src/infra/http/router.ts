@@ -2,6 +2,7 @@ import { Express, Request, Response, NextFunction } from 'express';
 import { Route, Router, RouteMetadata, MiddlewareMetadata } from '@soapjs/soap/http';
 import { RouteErrorHandler, RouteHandler } from '../../types';
 import { MiddlewareFactory } from '../../utils/middleware-factory';
+import { dispatchResult, resolveUseCase } from '../../utils/route-dispatch';
 
 export class ExpressRouter {
   readonly prefix?: string;
@@ -174,30 +175,16 @@ export class ExpressRouter {
       app[method.toLowerCase()](fullPath, ...middlewares, async (req: Request, res: Response, next: NextFunction) => {
         try {
           let result;
-          
+
           if (route.useCase && container) {
-            // UseCase execution
-            const useCase = container.get(route.useCase.name);
+            const useCase = resolveUseCase(container, route.useCase);
             const input = route.routeIO ? route.routeIO.from(req) : req.body;
             result = await (useCase as any).execute(input);
-            
-            // Response mapping
-            if (route.routeIO) {
-              route.routeIO.to(result, res);
-            } else {
-              res.json(result);
-            }
           } else if (route.handler) {
-            // Handler execution
             result = await route.handler(req, res);
-            
-            // Response mapping
-            if (route.routeIO) {
-              route.routeIO.to(result, res);
-            } else {
-              res.json(result);
-            }
           }
+
+          dispatchResult(result, res, route.routeIO);
         } catch (error) {
           if (this.errorHandler) {
             this.errorHandler.handler(error, req, res);

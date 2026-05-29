@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Result } from '@soapjs/soap/common';
 import { IO } from '@soapjs/soap/middleware';
 import { RequestWithFile, ExpressIO, UploadedFile } from './types';
+import { ResultMapper } from './result-mapper';
 
 
 export type Pagination = {
@@ -36,24 +37,22 @@ export class PaginationIO implements ExpressIO {
 
   to<T = Response>(result: Result<Pagination>, target: T) {
     const res = target as Response;
-    if (result?.isSuccess && result.isSuccess()) {
-      res.json({
-        data: result.content,
-        pagination: {
-          page: result.content.pagination?.page || 1,
-          total: result.content.pagination?.total || 0,
-          pages: result.content.pagination?.pages || 1,
-          hasNext: result.content.pagination?.hasNext || false,
-          hasPrev: result.content.pagination?.hasPrev || false
-        }
-      });
-    } else {
-      if (result?.failure?.error) {
-        res.status(400).json({ error: result.failure.error.message });
-      } else {
-        res.status(500).json({ error: 'Internal Server Error' });
-      }
+    // Failures go through ResultMapper for consistent status mapping.
+    if (!(result?.isSuccess && result.isSuccess())) {
+      if (result instanceof Result) ResultMapper.toResponse(result, res);
+      else if (!res.headersSent) res.status(500).json({ error: 'Internal Server Error' });
+      return;
     }
+    res.json({
+      data: result.content,
+      pagination: {
+        page: result.content.pagination?.page || 1,
+        total: result.content.pagination?.total || 0,
+        pages: result.content.pagination?.pages || 1,
+        hasNext: result.content.pagination?.hasNext || false,
+        hasPrev: result.content.pagination?.hasPrev || false
+      }
+    });
   }
 }
 
@@ -77,19 +76,12 @@ export class FileUploadIO implements ExpressIO {
 
   to<T = Response>(result: Result<FileUpload>, target: T) {
     const res = target as Response;
-    if (result?.isSuccess && result.isSuccess()) {
-      res.json({
-        success: true,
-        fileId: result.content.id,
-        url: result.content.url
-      });
-    } else {
-      if (result?.failure?.error) {
-        res.status(400).json({ error: result.failure.error.message });
-      } else {
-        res.status(500).json({ error: 'File upload failed' });
-      }
+    if (!(result?.isSuccess && result.isSuccess())) {
+      if (result instanceof Result) ResultMapper.toResponse(result, res);
+      else if (!res.headersSent) res.status(500).json({ error: 'Internal Server Error' });
+      return;
     }
+    res.json({ success: true, fileId: result.content.id, url: result.content.url });
   }
 }
 
@@ -101,14 +93,11 @@ export class SimpleIO implements ExpressIO {
 
   to<T = Response>(result: Result<any>, target: T) {
     const res = target as Response;
-    if (result?.isSuccess && result.isSuccess()) {
-      res.json(result.content);
-    } else {
-      if (result?.failure?.error) {
-        res.status(400).json({ error: result.failure.error.message });
-      } else {
-        res.status(500).json({ error: 'Internal Server Error' });
-      }
+    if (!(result?.isSuccess && result.isSuccess())) {
+      if (result instanceof Result) ResultMapper.toResponse(result, res);
+      else if (!res.headersSent) res.status(500).json({ error: 'Internal Server Error' });
+      return;
     }
+    res.json(result.content);
   }
 }

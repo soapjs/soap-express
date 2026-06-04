@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { RequestMethod, RouteAdditionalOptions, HttpPlugin } from '@soapjs/soap/http';
 import { IO } from '@soapjs/soap/middleware';
-import { DIContainer } from '@soapjs/soap/common';
+import { DIContainer, Logger } from '@soapjs/soap/common';
 
 // Express-specific IO interface that maps to @soapjs/soap IO
 export interface ExpressIO<I = unknown, O = unknown> extends IO<I, O> {
@@ -31,6 +31,13 @@ export interface RequestWithFile extends Request {
 // Core types
 export interface SoapExpressOptions {
   container?: DIContainer;
+  /**
+   * Logger port used by the framework's HTTP layer (logging middleware,
+   * error handler) and bound in the container under `Logger.Token` so every
+   * resolved service can read the same instance. Defaults to a level-aware
+   * {@link ConsoleLogger} that emits JSON when stdout is not a TTY.
+   */
+  logger?: Logger;
   middlewares?: any[];
   errorHandler?: (error: any, req: Request, res: Response, next: NextFunction) => void;
   errorHandlerOptions?: ErrorHandlerOptions;
@@ -89,7 +96,17 @@ export interface CacheOptions {
 
 // Error handling types
 export interface ErrorHandlerOptions {
+  /**
+   * Legacy hook called with `(error, req, res)`. Kept for backwards
+   * compatibility — prefer `port` for new code.
+   */
   logger?: (error: Error, req: Request, res: Response) => void;
+  /**
+   * Logger port. Bootstrap auto-fills this with the framework logger so the
+   * error handler emits structured records through the same sink as the
+   * rest of the app.
+   */
+  port?: Logger;
   sentry?: (error: Error, req: Request, res: Response) => void;
   custom?: (error: Error, req: Request, res: Response) => void;
   includeStack?: boolean;

@@ -13,6 +13,15 @@ export interface AuthMiddlewareOptions {
 export class AuthMiddlewareFactory {
   constructor(private registry: AuthRegistry) {}
 
+  /**
+   * Exposes the underlying {@link AuthRegistry} so callers (e.g. the route
+   * builder) can pick a sensible default strategy when none was specified
+   * on the route metadata.
+   */
+  getRegistry(): AuthRegistry {
+    return this.registry;
+  }
+
   createAuthMiddleware(strategyName: string, options: AuthMiddlewareOptions = {}) {
     const required = options.required !== false;
     return async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -31,8 +40,18 @@ export class AuthMiddlewareFactory {
         } else {
           res.status(401).json({ error: 'Unauthorized' });
         }
-      } catch (error) {
-        res.status(500).json({ error: 'Authentication failed' });
+      } catch (error: any) {
+        // Auth-domain failures (missing/invalid/expired token, unknown user,
+        // bad credentials) are client errors, not server errors — surface
+        // them as 401 so clients can re-authenticate instead of treating
+        // them like infrastructure outages.
+        const name = error?.constructor?.name || error?.name || '';
+        const isAuthError = /^(Missing|Invalid|Expired|Undefined|Unauthorized|UserNotFound|InvalidCredentials)/.test(name);
+        if (isAuthError) {
+          res.status(401).json({ error: 'Unauthorized', message: error.message });
+        } else {
+          res.status(500).json({ error: 'Authentication failed', message: error?.message });
+        }
       }
     };
   }
@@ -103,9 +122,16 @@ export class AuthMiddlewareFactory {
 
   private async checkAuthorization(user: AuthUser, roles: RoleConfig, req: AuthRequest): Promise<boolean> {
     if (roles.authenticatedOnly && !user) return false;
-    if (roles.deny && roles.deny.some(role => user.roles?.includes(role))) return false;
+    // Accept both `user.roles: string[]` (canonical AuthUser shape) and a
+    // singular `user.role: string` (common in apps that mirror DB columns).
+    const userRoles: string[] = Array.isArray((user as any).roles)
+      ? (user as any).roles
+      : typeof (user as any).role === 'string'
+        ? [(user as any).role]
+        : [];
+    if (roles.deny && roles.deny.some(role => userRoles.includes(role))) return false;
     if (roles.allow && roles.allow.length > 0) {
-      if (!user.roles || !roles.allow.some(role => user.roles!.includes(role))) return false;
+      if (userRoles.length === 0 || !roles.allow.some(role => userRoles.includes(role))) return false;
     }
     if (roles.selfOnly) {
       if (typeof roles.selfOnly === 'function') {

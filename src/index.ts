@@ -65,6 +65,7 @@ export {
   // Built-in plugins
   HealthCheckPlugin,
   PingPlugin,
+  MetricsPlugin,
 } from '@soapjs/soap/http';
 
 export type {

@@ -27,4 +27,14 @@ export class AuthRegistry {
   getNames(): string[] {
     return Array.from(this.strategies.keys());
   }
+
+  /**
+   * Returns the name of the strategy that should be used when a caller didn't
+   * specify one (e.g. `@AdminOnly()` / `@Auth({ roles })` without an explicit
+   * `strategy`). Currently falls back to the first registered strategy.
+   */
+  getDefaultName(): string | undefined {
+    const iter = this.strategies.keys().next();
+    return iter.done ? undefined : iter.value;
+  }
 }

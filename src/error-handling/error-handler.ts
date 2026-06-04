@@ -1,8 +1,26 @@
 import { Request, Response, NextFunction } from 'express';
-import { Result } from '@soapjs/soap/common';
+import { Result, Logger, ConsoleLogger } from '@soapjs/soap/common';
 
+/**
+ * Options for the framework error handler. Backwards-compatible: the legacy
+ * `logger` function still works; new code should use the `port` field to pass
+ * a {@link Logger} instance — the same one the rest of the app uses.
+ */
 export interface ErrorHandlerOptions {
+  /**
+   * Legacy hook: called once per error with the raw `(error, req, res)`.
+   * Kept for backwards compatibility with apps that wired Sentry or Winston
+   * here before the Logger port existed. Prefer {@link ErrorHandlerOptions.port}
+   * for new code.
+   */
   logger?: (error: Error, req: Request, res: Response) => void;
+  /**
+   * Logger port. When supplied, the handler emits a structured `error`
+   * record per failure (with the same correlation id `req.log` uses, when
+   * available) instead of writing to `console.error`. Bootstrap auto-fills
+   * this from DI so all framework layers share one logger.
+   */
+  port?: Logger;
   sentry?: (error: Error, req: Request, res: Response) => void;
   custom?: (error: Error, req: Request, res: Response) => void;
   includeStack?: boolean;
@@ -76,35 +94,33 @@ export class ErrorHandler {
   }
 
   private logError(error: Error, req: Request, res: Response) {
-    const logData = {
-      error: {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      },
-      request: {
-        method: req.method,
-        path: req.path,
-        ip: req.ip,
-        userAgent: req.get('User-Agent'),
-        timestamp: new Date().toISOString()
-      }
-    };
+    // Prefer the per-request child logger (carries requestId + method/path)
+    // attached by LoggingMiddleware. Fall back to the configured logger port,
+    // then to a fresh ConsoleLogger so the error is never swallowed even
+    // when no logger has been wired explicitly.
+    const requestLogger: Logger | undefined = (req as Request & { log?: Logger }).log;
+    const portLogger: Logger | undefined = this.appOptions?.port;
+    const logger: Logger = requestLogger ?? portLogger ?? new ConsoleLogger();
 
-    // Console logging
-    console.error('SoapJS Express Error:', logData);
+    logger.error('Unhandled error', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      method: req.method,
+      path: req.path,
+      ip: req.ip,
+      userAgent: req.get('User-Agent'),
+    });
 
-    // Custom logger
+    // Backwards-compat hook for apps that wired logging via the function form.
     if (this.appOptions?.logger) {
       this.appOptions.logger(error, req, res);
     }
 
-    // Sentry integration
     if (this.appOptions?.sentry) {
       this.appOptions.sentry(error, req, res);
     }
 
-    // Custom error handler
     if (this.appOptions?.custom) {
       this.appOptions.custom(error, req, res);
     }

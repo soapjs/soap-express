@@ -2,7 +2,8 @@ import { SoapExpressApp } from './app';
 import { SoapExpressOptions, CorsOptions, RateLimitOptions, LoggingOptions } from './types';
 import { AuthStrategy } from './auth';
 import { HttpPlugin } from '@soapjs/soap/http';
-import { DIContainer } from '@soapjs/soap/common';
+import { DIContainer, Logger } from '@soapjs/soap/common';
+import { Drainable } from '@soapjs/soap/events';
 import type { CqrsConfig } from './cqrs/wiring';
 
 // ── Config ─────────────────────────────────────────────────────────────────
@@ -79,6 +80,16 @@ export interface BootstrapConfig {
      * Pass {@link LoggingOptions} to customise the log level/format.
      */
     logging?: boolean | LoggingOptions;
+
+    /**
+     * Extra Express middleware applied after compression and **before** logging
+     * (tracing, request context, …). Wire adapters from your app, not from
+     * soap-express.
+     */
+    pre?: Array<(req: any, res: any, next: any) => void>;
+
+    /** Extra middleware applied after the logging middleware. */
+    post?: Array<(req: any, res: any, next: any) => void>;
   };
 
   /**
@@ -133,6 +144,34 @@ export interface BootstrapConfig {
    * await bootstrap({ cqrs: { commandBusToken: 'MyCommandBus' } });
    */
   cqrs?: boolean | CqrsConfig;
+
+  /**
+   * Logger port. Bound in the container under `Logger.Token`, used by the
+   * logging middleware (per-request `req.log` with `requestId` context),
+   * the error handler, and any service that resolves `Logger` out of DI.
+   *
+   * Default: a level-aware {@link ConsoleLogger} from `@soapjs/soap/common`
+   * that emits JSON when stdout is not a TTY and respects the `LOG_LEVEL`
+   * env var. Pass a Pino/Winston adapter to ship to your log infrastructure.
+   */
+  logger?: Logger;
+
+  /**
+   * External resources to drain on graceful shutdown (SIGTERM / SIGINT).
+   *
+   * Each entry is duck-typed via {@link Drainable} — `gracefulShutdown`,
+   * `disconnect`, or `close` are accepted, picked in that order — so the
+   * official adapters (`MongoSource`, `KafkaEventBus`, `SocketServer`, …)
+   * work without ceremony. Drained AFTER the HTTP server stops accepting
+   * new traffic so in-flight requests still see live connections.
+   *
+   * @example
+   * await bootstrap({
+   *   controllers: [UserController],
+   *   drainables: [mongo, kafkaBus, socketServer],
+   * });
+   */
+  drainables?: Drainable[];
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -208,10 +247,26 @@ export function createApp(config: BootstrapConfig = {}): SoapExpressApp {
     app: appOptions = {},
     container: userContainer,
     cqrs,
+    logger,
+    drainables = [],
   } = config;
 
-  const app = new SoapExpressApp(appOptions);
+  const pluginList: Array<HttpPlugin | { plugin: HttpPlugin; options?: any }> = [...plugins];
+
+  // Promote a top-level `logger` into the app options so SoapExpressApp picks
+  // it up via the BaseHttpApp constructor (which binds it under `Logger.Token`
+  // and threads it through the error handler).
+  const mergedAppOptions: SoapExpressOptions = logger
+    ? { ...appOptions, logger: appOptions.logger ?? logger }
+    : appOptions;
+
+  const app = new SoapExpressApp(mergedAppOptions);
   const expressInstance = app.getApp();
+  // The CQRS wiring is now async (event-bus adapters may need to open a
+  // consumer when handlers subscribe). `createApp` stays synchronous —
+  // callers that opt into CQRS via `bootstrap()` get the await for free,
+  // and direct `createApp` users can await `app.cqrsReady` before serving.
+  let pendingCqrs: Promise<void> | undefined;
 
   // ── 1. Merge external DI bindings ────────────────────────────────────────
   if (userContainer) {
@@ -240,9 +295,25 @@ export function createApp(config: BootstrapConfig = {}): SoapExpressApp {
     expressInstance.use(compression());
   }
 
+  if (middleware.pre?.length) {
+    middleware.pre.forEach((mw) => expressInstance.use(mw));
+  }
+
   if (middleware.logging) {
     const { LoggingMiddleware } = require('./middlewares/logging');
-    expressInstance.use(LoggingMiddleware.create(normaliseLogging(middleware.logging)));
+    // Hand the middleware the framework-managed logger so the access log,
+    // the per-request `req.log`, and the error handler all share one sink
+    // and one structured-logging contract.
+    expressInstance.use(
+      LoggingMiddleware.create({
+        ...normaliseLogging(middleware.logging),
+        logger: app.getLogger(),
+      }),
+    );
+  }
+
+  if (middleware.post?.length) {
+    middleware.post.forEach((mw) => expressInstance.use(mw));
   }
 
   // ── 3. Auth strategies ───────────────────────────────────────────────────
@@ -251,8 +322,8 @@ export function createApp(config: BootstrapConfig = {}): SoapExpressApp {
     strategies.forEach(s => app.registerAuthStrategy(s));
   }
 
-  // ── 4. Plugins ───────────────────────────────────────────────────────────
-  plugins.forEach(entry => {
+  // ── 4. Plugins (metrics, OpenAPI, … — register from your app) ───────────
+  pluginList.forEach(entry => {
     if (entry !== null && typeof entry === 'object' && 'plugin' in entry) {
       const { plugin, options } = entry as { plugin: HttpPlugin; options?: any };
       app.usePlugin(plugin, options);
@@ -261,7 +332,26 @@ export function createApp(config: BootstrapConfig = {}): SoapExpressApp {
     }
   });
 
-  // ── 5. Controllers: DI bind + route mounting ─────────────────────────────
+  // ── 5. CQRS wiring (lazy require to keep HTTP-only bundles clean) ─────────
+  //
+  // MUST run BEFORE controllers are bound — `registerController` triggers
+  // controller instantiation through DI, and controllers that
+  // `@Inject('CommandBus')` / `@Inject('QueryBus')` need those tokens to
+  // already be in the container at construction time. Wiring CQRS after
+  // controller registration silently injects `undefined` for the buses.
+  if (cqrs) {
+    const { wireCqrs } = require('./cqrs/wiring');
+    // `wireCqrs` is now async because `DomainEventBus.subscribe` may open a
+    // broker consumer on first call. The legacy sync caller is preserved
+    // — fire-and-forget would race with controller resolution. The HTTP
+    // listener doesn't start until `bootstrap()` awaits it (see below).
+    pendingCqrs = wireCqrs(
+      app.getContainer(),
+      typeof cqrs === 'object' ? cqrs : {},
+    );
+  }
+
+  // ── 6. Controllers: DI bind + route mounting ─────────────────────────────
   controllers.forEach(Controller => {
     // Registers the class in the internal DI container (uses @Injectable token,
     // which @Controller sets automatically to the class name).
@@ -270,17 +360,24 @@ export function createApp(config: BootstrapConfig = {}): SoapExpressApp {
     app.registerController(Controller);
   });
 
-  // ── 6. Optional health check ─────────────────────────────────────────────
+  // ── 7. Optional health check ─────────────────────────────────────────────
   if (healthCheck) {
     const path = typeof healthCheck === 'string' ? healthCheck : '/health';
     app.healthCheck(path);
   }
 
-  // ── 7. CQRS wiring (lazy require to keep HTTP-only bundles clean) ─────────
-  if (cqrs) {
-    const { wireCqrs } = require('./cqrs/wiring');
-    wireCqrs(app.getContainer(), typeof cqrs === 'object' ? cqrs : {});
-  }
+  // ── 8. External drainables (DBs, event buses, sockets, …) ────────────────
+  //
+  // Registered LAST so they shut down in the right order: HTTP server first
+  // (stops accepting requests), then plugins, then DBs / brokers. The
+  // signal-handler is already installed by BaseHttpApp; this just feeds it
+  // the resource list the consumer cares about.
+  drainables.forEach((resource) => app.registerDrainable(resource));
+
+  // Expose the async CQRS-ready hook so direct `createApp()` callers can
+  // await event subscription before serving requests. `bootstrap()` already
+  // awaits this internally.
+  (app as SoapExpressApp & { cqrsReady?: Promise<void> }).cqrsReady = pendingCqrs;
 
   return app;
 }
@@ -310,6 +407,14 @@ export async function bootstrap(
 ): Promise<SoapExpressApp> {
   const { port = 3000, ...rest } = config;
   const app = createApp(rest);
+  // Wait for `@EventHandler` consumers to subscribe (Kafka adapters open
+  // their consumer here) before accepting any HTTP traffic. Otherwise the
+  // first few requests could fire commands whose downstream events have no
+  // listener yet.
+  const cqrsReady = (app as SoapExpressApp & { cqrsReady?: Promise<void> }).cqrsReady;
+  if (cqrsReady) {
+    await cqrsReady;
+  }
   await app.start(port);
   return app;
 }

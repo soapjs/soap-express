@@ -262,26 +262,63 @@ describe('ErrorHandler', () => {
       consoleSpy.mockRestore();
     });
 
-    it('should log error to console', () => {
+    it('logs through the Logger port attached as req.log when available', () => {
+      const portCalls: Array<{ msg: string; meta?: unknown }> = [];
+      const reqLogger = {
+        log: jest.fn(),
+        error: (msg: string | Error, meta?: unknown) =>
+          portCalls.push({
+            msg: msg instanceof Error ? msg.message : msg,
+            meta,
+          }),
+        warn: jest.fn(),
+        info: jest.fn(),
+        http: jest.fn(),
+        verbose: jest.fn(),
+        debug: jest.fn(),
+      };
+      (mockReq as { log?: unknown }).log = reqLogger;
+
       const errorHandler = new ErrorHandler();
       const error = new Error('Test error');
-
       errorHandler.handle(error, mockReq as Request, mockRes as Response);
 
-      expect(consoleSpy).toHaveBeenCalledWith('SoapJS Express Error:', {
-        error: {
-          name: 'Error',
-          message: 'Test error',
-          stack: error.stack
-        },
-        request: {
-          method: 'GET',
-          path: '/test',
-          ip: '127.0.0.1',
-          userAgent: 'test-agent',
-          timestamp: expect.any(String)
-        }
+      // The Logger port is preferred over `console.error`.
+      expect(consoleSpy).not.toHaveBeenCalled();
+      expect(portCalls).toHaveLength(1);
+      expect(portCalls[0].msg).toBe('Unhandled error');
+      expect(portCalls[0].meta).toMatchObject({
+        name: 'Error',
+        message: 'Test error',
+        method: 'GET',
+        path: '/test',
+        ip: '127.0.0.1',
+        userAgent: 'test-agent',
       });
+    });
+
+    it('falls back to ErrorHandlerOptions.port when no req.log is attached', () => {
+      const portCalls: Array<{ msg: string; meta?: unknown }> = [];
+      const portLogger = {
+        log: jest.fn(),
+        error: (msg: string | Error, meta?: unknown) =>
+          portCalls.push({
+            msg: msg instanceof Error ? msg.message : msg,
+            meta,
+          }),
+        warn: jest.fn(),
+        info: jest.fn(),
+        http: jest.fn(),
+        verbose: jest.fn(),
+        debug: jest.fn(),
+      };
+
+      const errorHandler = new ErrorHandler(undefined, { port: portLogger });
+      const error = new Error('Test error');
+      errorHandler.handle(error, mockReq as Request, mockRes as Response);
+
+      expect(portCalls).toHaveLength(1);
+      expect(portCalls[0].msg).toBe('Unhandled error');
     });
 
     it('should call custom logger when provided', () => {

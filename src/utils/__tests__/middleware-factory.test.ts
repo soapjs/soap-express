@@ -4,7 +4,13 @@ import { MiddlewareFactory } from '../middleware-factory';
 
 // Mock the middleware classes
 jest.mock('../../middlewares/auth');
-jest.mock('../../middlewares/validation');
+jest.mock('../../middlewares/validation', () => {
+  const actual = jest.requireActual('../../middlewares/validation');
+  return {
+    ...actual,
+    ValidationMiddleware: { create: jest.fn() },
+  };
+});
 jest.mock('../../middlewares/cors');
 jest.mock('../../middlewares/rate-limit');
 jest.mock('../../middlewares/logging');
@@ -94,7 +100,9 @@ describe('MiddlewareFactory', () => {
 
     it('should create validation middleware', () => {
       const mockMiddleware = jest.fn();
-      const mockSchema = { type: 'object' };
+      const mockSchema = {
+        validate: jest.fn().mockReturnValue({ error: null, value: {} }),
+      };
       (ValidationMiddleware.create as jest.Mock).mockReturnValue(mockMiddleware);
 
       const metadata: MiddlewareMetadata = {
@@ -105,7 +113,7 @@ describe('MiddlewareFactory', () => {
 
       const result = factory.create(metadata);
 
-      expect(ValidationMiddleware.create).toHaveBeenCalledWith(mockSchema);
+      expect(ValidationMiddleware.create).toHaveBeenCalledWith(expect.any(Function));
       expect(result).toBe(mockMiddleware);
     });
 

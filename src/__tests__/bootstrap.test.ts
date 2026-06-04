@@ -40,6 +40,12 @@ jest.mock('../decorators/registry', () => ({
     registerController: jest.fn((target: any, meta: any) => {
       fakeControllerMap.set(target.name, meta);
     }),
+    // CQRS hooks consumed by wireCqrs — return empty by default
+    getCommandBus: jest.fn(() => undefined),
+    getQueryBus: jest.fn(() => undefined),
+    getCommandHandlers: jest.fn(() => [] as any[]),
+    getQueryHandlers: jest.fn(() => [] as any[]),
+    getEventHandlers: jest.fn(() => [] as any[]),
   },
 }));
 
@@ -180,16 +186,20 @@ describe('createApp', () => {
     expect(mockLoggingMiddlewareCreate).not.toHaveBeenCalled();
   });
 
-  it('applies logging with default level when middleware.logging is true', () => {
+  it('applies logging with default level when middleware.logging is true, threading the app logger through', () => {
     createApp({ middleware: { logging: true } });
-    expect(mockLoggingMiddlewareCreate).toHaveBeenCalledWith({ level: 'info' });
+    expect(mockLoggingMiddlewareCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ level: 'info', logger: expect.anything() }),
+    );
     expect(mockExpressInstance.use).toHaveBeenCalledWith('logging-middleware');
   });
 
-  it('forwards LoggingOptions when middleware.logging is an object', () => {
+  it('forwards LoggingOptions when middleware.logging is an object and still injects the app logger', () => {
     const logOptions = { level: 'debug' as const };
     createApp({ middleware: { logging: logOptions } });
-    expect(mockLoggingMiddlewareCreate).toHaveBeenCalledWith(logOptions);
+    expect(mockLoggingMiddlewareCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ level: 'debug', logger: expect.anything() }),
+    );
   });
 
   // ── Middleware order ──────────────────────────────────────────────────────
@@ -244,6 +254,25 @@ describe('createApp', () => {
 
     const app = createApp({ controllers: [SomeCtrl] });
     expect(app.getContainer().has('SomeCtrl')).toBe(true);
+  });
+
+  // Regression: `cqrs: true` must wire CommandBus/QueryBus BEFORE controllers
+  // are registered, because `registerController` instantiates the controller
+  // through DI — controllers that @Inject('CommandBus')/('QueryBus') would
+  // otherwise be constructed with `undefined` for the buses.
+  it('binds CommandBus/QueryBus before controllers are instantiated when cqrs is enabled', () => {
+    @Controller('/cqrs')
+    class CqrsCtrl {}
+
+    const app = createApp({ controllers: [CqrsCtrl], cqrs: true });
+
+    expect(app.getContainer().has('CommandBus')).toBe(true);
+    expect(app.getContainer().has('QueryBus')).toBe(true);
+
+    const cmdBus = app.getContainer().get<any>('CommandBus');
+    const qryBus = app.getContainer().get<any>('QueryBus');
+    expect(typeof cmdBus.dispatch).toBe('function');
+    expect(typeof qryBus.dispatch).toBe('function');
   });
 
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -332,6 +361,60 @@ describe('createApp', () => {
   it('ignores an empty external container', () => {
     const external = new DIContainer();
     expect(() => createApp({ container: external })).not.toThrow();
+  });
+});
+
+// ── Logger / Drainables ────────────────────────────────────────────────────
+
+describe('createApp — logger + drainables', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    fakeControllerMap.clear();
+  });
+
+  it('binds the custom logger under Logger.Token so DI consumers see the same instance', () => {
+    const { Logger } = require('@soapjs/soap/common');
+    const myLogger = {
+      log: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+      info: jest.fn(),
+      http: jest.fn(),
+      verbose: jest.fn(),
+      debug: jest.fn(),
+      child: jest.fn().mockReturnThis(),
+    };
+
+    const app = createApp({ logger: myLogger });
+    expect(app.getContainer().get(Logger.Token)).toBe(myLogger);
+    expect(app.getLogger()).toBe(myLogger);
+  });
+
+  it('passes the framework logger to LoggingMiddleware so request logs and error logs share one sink', () => {
+    createApp({ middleware: { logging: true } });
+
+    expect(mockLoggingMiddlewareCreate).toHaveBeenCalledTimes(1);
+    const calls = mockLoggingMiddlewareCreate.mock.calls as unknown as Array<
+      Array<{ logger?: unknown }>
+    >;
+    const opts = calls[0][0];
+    expect(opts).toHaveProperty('logger');
+    expect(opts.logger).toBeDefined();
+  });
+
+  it('registers every entry in `drainables` so SIGTERM tears them down with the app', () => {
+    const drain1 = { close: jest.fn() };
+    const drain2 = { disconnect: jest.fn() };
+    const drain3 = { gracefulShutdown: jest.fn() };
+
+    const app = createApp({ drainables: [drain1, drain2, drain3] });
+
+    expect(app.getDrainables()).toEqual([drain1, drain2, drain3]);
+  });
+
+  it('omits drainables registration entirely when none are configured', () => {
+    const app = createApp({});
+    expect(app.getDrainables()).toEqual([]);
   });
 });
 

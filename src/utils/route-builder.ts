@@ -4,6 +4,7 @@ import { MiddlewareFactory } from './middleware-factory';
 import { Route, RouteGroup, RouteAdditionalOptions, MiddlewareMetadata, RouteMetadata } from '@soapjs/soap/http';
 import { DIContainer } from '@soapjs/soap/common';
 import { dispatchResult, resolveUseCase } from './route-dispatch';
+import { buildLegacyValidationMiddlewares } from './validation-middleware';
 
 export class RouteBuilder {
   private middlewareFactory: MiddlewareFactory;
@@ -70,10 +71,11 @@ export class RouteBuilder {
 
     const fullPath = `${controllerMetadata.basePath}${metadata.path}`;
     const middlewares = this.buildMiddlewares(metadata.middlewares);
-    
+    const routeOptionMiddlewares = this.buildRouteMiddlewares(metadata.options);
+
     // Add auth middlewares if auth metadata exists
     const authMiddlewares = this.buildAuthMiddlewares(controller, metadata);
-    const allMiddlewares = [...middlewares, ...authMiddlewares];
+    const allMiddlewares = [...middlewares, ...routeOptionMiddlewares, ...authMiddlewares];
     
     const controllerInstance = this.container.get(controller.name);
 
@@ -141,14 +143,21 @@ export class RouteBuilder {
       // Get auth middleware factory from container
       const authMiddlewareFactory = this.container.get('AuthMiddlewareFactory') as any;
       if (authMiddlewareFactory) {
-        // Create auth middleware
-        if (authMetadata.strategy) {
-          const authMiddleware = authMiddlewareFactory.createAuthMiddleware(
-            authMetadata.strategy
-          );
+        // Decide which auth strategy to enforce. If the caller didn't name
+        // one (e.g. `@AdminOnly()` / `@Auth({ roles: ... })`), but role
+        // checks are requested, fall back to the first registered strategy
+        // — otherwise the role middleware would run with `req.user` unset
+        // and reject every request with "User not authenticated".
+        let strategy: string | undefined = authMetadata.strategy;
+        if (!strategy && authMetadata.roles) {
+          strategy = authMiddlewareFactory.getRegistry?.()?.getDefaultName();
+        }
+
+        if (strategy) {
+          const authMiddleware = authMiddlewareFactory.createAuthMiddleware(strategy);
           middlewares.push(authMiddleware);
         }
-        
+
         // Create role middleware if roles are specified
         if (authMetadata.roles) {
           const roleMiddleware = authMiddlewareFactory.createRoleMiddleware(
@@ -234,11 +243,8 @@ export class RouteBuilder {
       middlewares.push(compression(options.compression));
     }
 
-    // Validation middleware
-    if (options.validation) {
-      const validationMiddleware = this.createValidationMiddleware(options.validation);
-      middlewares.push(validationMiddleware);
-    }
+    // Legacy Joi validation; Zod/other adapters use `options.middlewares.pre` from the app
+    middlewares.push(...buildLegacyValidationMiddlewares(options));
 
     // Custom middlewares
     if (options.middlewares?.pre) {
@@ -248,23 +254,4 @@ export class RouteBuilder {
     return middlewares;
   }
 
-  // Create validation middleware
-  private createValidationMiddleware(validation: any): any {
-    return (req: Request, res: Response, next: any) => {
-      try {
-        if (validation.request?.schema) {
-          const { error } = validation.request.schema.validate(req.body);
-          if (error) {
-            return res.status(400).json({
-              error: 'Validation Error',
-              message: error.details.map((detail: any) => detail.message)
-            });
-          }
-        }
-        next();
-      } catch (error) {
-        next(error);
-      }
-    };
-  }
 }

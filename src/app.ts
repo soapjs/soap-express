@@ -12,6 +12,7 @@ import {
   RouteGroup,
   Route,
   HttpPlugin,
+  HttpPluginManager,
   Router
 } from '@soapjs/soap/http';
 import { MiddlewareRegistry } from '@soapjs/soap/middleware';
@@ -34,10 +35,23 @@ export class SoapExpressApp extends BaseHttpApp<Express> {
       mount: () => router
     } as unknown as Router;
 
-    super(router);
+    super(router, options.logger);
+
+    // Plugins resolve the app via HttpPluginManager — without this, async
+    // installs (MetricsPlugin, …) receive `undefined` and reject after listen.
+    (this.pluginManager as HttpPluginManager).setApp(this);
 
     this.app = express();
-    this.errorHandler = new ErrorHandler(options.errorHandler as any, options.errorHandlerOptions);
+    // Auto-attach the framework logger to the error handler so failures are
+    // emitted through the same sink as everything else, even when the user
+    // didn't supply an explicit ErrorHandlerOptions.port.
+    const errorHandlerOptions = options.errorHandlerOptions
+      ? { ...options.errorHandlerOptions }
+      : {};
+    if (!errorHandlerOptions.port) {
+      errorHandlerOptions.port = this.logger;
+    }
+    this.errorHandler = new ErrorHandler(options.errorHandler as any, errorHandlerOptions);
     this.routeBuilder = new RouteBuilder(this.app, this.container, this.errorHandler);
     this.authRegistry = new AuthRegistry();
     this.authMiddlewareFactory = new AuthMiddlewareFactory(this.authRegistry);

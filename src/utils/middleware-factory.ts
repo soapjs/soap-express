@@ -1,7 +1,7 @@
 import { MiddlewareMetadata } from '@soapjs/soap/http';
 
 import { AuthenticationMiddleware, AuthorizationMiddleware } from '../middlewares/auth';
-import { ValidationMiddleware } from '../middlewares/validation';
+import { ValidationMiddleware, zodAdapter, joiAdapter } from '../middlewares/validation';
 import { CorsMiddleware } from '../middlewares/cors';
 import { RateLimitMiddleware } from '../middlewares/rate-limit';
 import { LoggingMiddleware } from '../middlewares/logging';
@@ -22,8 +22,18 @@ export class MiddlewareFactory {
       case 'authorization':
         return AuthorizationMiddleware.create(middleware.options);
       
-      case 'validation':
-        return ValidationMiddleware.create(middleware.options.schema);
+      case 'validation': {
+        const schema = middleware.options?.schema ?? middleware.options;
+        const validator =
+          middleware.options?.validator === 'zod'
+            ? zodAdapter(schema)
+            : middleware.options?.validator === 'joi'
+              ? joiAdapter(schema)
+              : typeof schema?.validate === 'function'
+                ? joiAdapter(schema)
+                : zodAdapter(schema);
+        return ValidationMiddleware.create(validator);
+      }
       
       case 'logging':
         return LoggingMiddleware.create(middleware.options);

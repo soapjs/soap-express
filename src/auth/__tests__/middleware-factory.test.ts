@@ -88,7 +88,7 @@ describe('AuthMiddlewareFactory', () => {
       expect(mockRes.status).not.toHaveBeenCalled();
     });
 
-    it('should return 500 on authentication error', async () => {
+    it('should return 500 on a non-auth (infrastructure) error', async () => {
       registry.register(mockStrategy);
       (mockStrategy.authenticate as jest.Mock).mockRejectedValue(new Error('Strategy error'));
 
@@ -96,7 +96,32 @@ describe('AuthMiddlewareFactory', () => {
       await middleware(mockReq as AuthRequest, mockRes as Response, mockNext);
 
       expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Authentication failed' });
+      expect(mockRes.json).toHaveBeenCalledWith({
+        error: 'Authentication failed',
+        message: 'Strategy error',
+      });
+    });
+
+    // Auth-domain failures from soap-auth (MissingTokenError, InvalidTokenError,
+    // UserNotFoundError, etc.) must be surfaced as 401 so clients can
+    // re-authenticate, instead of looking like server outages.
+    it('should return 401 when the strategy throws a known auth error', async () => {
+      class MissingTokenError extends Error {
+        constructor() {
+          super('Access token is required');
+        }
+      }
+      registry.register(mockStrategy);
+      (mockStrategy.authenticate as jest.Mock).mockRejectedValue(new MissingTokenError());
+
+      const middleware = factory.createAuthMiddleware('jwt');
+      await middleware(mockReq as AuthRequest, mockRes as Response, mockNext);
+
+      expect(mockRes.status).toHaveBeenCalledWith(401);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        error: 'Unauthorized',
+        message: 'Access token is required',
+      });
     });
   });
 

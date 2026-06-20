@@ -1,6 +1,6 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import { createServer, Server } from 'http';
-import { SoapExpressOptions } from './types';
+import { SecurityOptions, SoapExpressOptions } from './types';
 import { DecoratorRegistry } from './decorators/registry';
 import { RouteBuilder } from './utils/route-builder';
 import { ErrorHandler } from './error-handling/error-handler';
@@ -13,10 +13,20 @@ import {
   Route,
   HttpPlugin,
   HttpPluginManager,
+  MetricsPlugin,
+  MemoryMonitoringPlugin,
   Router
+} from '@soapjs/soap/http';
+import type {
+  MemoryMonitoringPluginOptions,
+  MemoryMonitor,
+  MemoryStats,
+  MetricsCollector,
+  MetricsPluginOptions,
 } from '@soapjs/soap/http';
 import { MiddlewareRegistry } from '@soapjs/soap/middleware';
 import { AuthRegistry, AuthMiddlewareFactory, AuthStrategy } from './auth';
+import { RateLimitMiddleware } from './middlewares/rate-limit';
 
 export class SoapExpressApp extends BaseHttpApp<Express> {
   private app: Express;
@@ -25,6 +35,8 @@ export class SoapExpressApp extends BaseHttpApp<Express> {
   private errorHandler: ErrorHandler;
   private authRegistry: AuthRegistry;
   private authMiddlewareFactory: AuthMiddlewareFactory;
+  private metricsPlugin?: MetricsPlugin;
+  private memoryMonitoringPlugin?: MemoryMonitoringPlugin;
 
   constructor(options: SoapExpressOptions) {
     // Minimal Router stub for BaseHttpApp; route mounting is handled by RouteBuilder.
@@ -60,6 +72,9 @@ export class SoapExpressApp extends BaseHttpApp<Express> {
     this.container.bindValue('AuthMiddlewareFactory', this.authMiddlewareFactory);
 
     this.initializeFramework();
+    if (options.security) {
+      this.useSecurity(options.security);
+    }
   }
 
   // ── Abstract methods from BaseHttpApp ──────────────────────────────────────
@@ -129,6 +144,42 @@ export class SoapExpressApp extends BaseHttpApp<Express> {
     return this;
   }
 
+  useSecurity(options: SecurityOptions = {}): this {
+    const {
+      disablePoweredBy = true,
+      trustProxy,
+      helmet,
+      cors,
+      throttle,
+    } = options;
+
+    if (disablePoweredBy) {
+      this.app.disable('x-powered-by');
+    }
+
+    if (trustProxy !== undefined) {
+      this.app.set('trust proxy', trustProxy);
+    }
+
+    if (helmet) {
+      const helmetFactory = require('helmet');
+      this.app.use(helmetFactory(helmet === true ? undefined : helmet));
+    }
+
+    if (cors) {
+      const corsFactory = require('cors');
+      this.app.use(corsFactory(cors === true ? undefined : cors));
+    }
+
+    if (throttle) {
+      RateLimitMiddleware
+        .createSecurityThrottle(throttle)
+        .forEach(middleware => this.app.use(middleware));
+    }
+
+    return this;
+  }
+
   getRouteRegistry(): RouteRegistry {
     return this.routeRegistry;
   }
@@ -173,6 +224,44 @@ export class SoapExpressApp extends BaseHttpApp<Express> {
 
   usePlugin(plugin: HttpPlugin, options?: any): this {
     return super.usePlugin(plugin, options);
+  }
+
+  useMetrics(options: Partial<MetricsPluginOptions> = {}): this {
+    this.metricsPlugin = new MetricsPlugin(options, this.logger);
+    return this.usePlugin(this.metricsPlugin, options);
+  }
+
+  getMetricsPlugin(): MetricsPlugin | undefined {
+    return this.metricsPlugin;
+  }
+
+  getMetricsCollector(): MetricsCollector | undefined {
+    return this.metricsPlugin?.getCollector();
+  }
+
+  getMetricsData(): unknown {
+    return this.metricsPlugin?.getMetricsData();
+  }
+
+  useMemoryMonitoring(options: Partial<MemoryMonitoringPluginOptions> = {}): this {
+    this.memoryMonitoringPlugin = new MemoryMonitoringPlugin(options, this.logger);
+    return this.usePlugin(this.memoryMonitoringPlugin, options);
+  }
+
+  getMemoryMonitoringPlugin(): MemoryMonitoringPlugin | undefined {
+    return this.memoryMonitoringPlugin;
+  }
+
+  getMemoryMonitor(): MemoryMonitor | undefined {
+    return this.memoryMonitoringPlugin?.getMonitor();
+  }
+
+  getMemoryStats(): MemoryStats | undefined {
+    return this.memoryMonitoringPlugin?.getMemoryStats();
+  }
+
+  getMemorySummary(): ReturnType<MemoryMonitoringPlugin['getMemorySummary']> | undefined {
+    return this.memoryMonitoringPlugin?.getMemorySummary();
   }
 
   // ── Dependency Injection helpers ──────────────────────────────────────────

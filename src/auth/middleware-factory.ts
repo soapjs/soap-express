@@ -1,10 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthStrategy, AuthUser, RoleConfig, AuthRequest, HttpContext } from '@soapjs/soap/http';
 import { AuthRegistry } from './registry';
-
-function toHttpContext(req: Request, res: Response, next: NextFunction): HttpContext {
-  return { req: req as unknown as HttpContext['req'], res: res as unknown as HttpContext['res'], next };
-}
+import { createExpressAuthContext } from './context';
+import {
+  MissingAuthenticatedUserError,
+  MissingRequiredRoleError,
+  sendAuthError,
+} from './errors';
 
 export interface AuthMiddlewareOptions {
   required?: boolean;
@@ -27,31 +29,30 @@ export class AuthMiddlewareFactory {
     return async (req: AuthRequest, res: Response, next: NextFunction) => {
       const strategy = this.registry.get(strategyName);
       if (!strategy) {
-        return res.status(500).json({ error: `Auth strategy '${strategyName}' not found` });
+        res.status(500).json({ error: `Auth strategy '${strategyName}' not found` });
+        return;
       }
       try {
-        const ctx = toHttpContext(req as unknown as Request, res, next);
+        const ctx = createExpressAuthContext(req as unknown as Request, res, next) as unknown as HttpContext;
         const result = await strategy.authenticate(ctx);
         if (result) {
+          res.locals = res.locals || {};
           req.user = result.user;
+          (req as any).auth = {
+            ...(req.auth || {}),
+            result,
+            tokens: result.tokens,
+            session: result.session,
+          };
+          res.locals.auth = result;
           next();
         } else if (!required) {
           next();
         } else {
-          res.status(401).json({ error: 'Unauthorized' });
+          sendAuthError(new MissingAuthenticatedUserError(), req as unknown as Request, res);
         }
       } catch (error: any) {
-        // Auth-domain failures (missing/invalid/expired token, unknown user,
-        // bad credentials) are client errors, not server errors — surface
-        // them as 401 so clients can re-authenticate instead of treating
-        // them like infrastructure outages.
-        const name = error?.constructor?.name || error?.name || '';
-        const isAuthError = /^(Missing|Invalid|Expired|Undefined|Unauthorized|UserNotFound|InvalidCredentials)/.test(name);
-        if (isAuthError) {
-          res.status(401).json({ error: 'Unauthorized', message: error.message });
-        } else {
-          res.status(500).json({ error: 'Authentication failed', message: error?.message });
-        }
+        sendAuthError(error, req as unknown as Request, res);
       }
     };
   }
@@ -60,10 +61,11 @@ export class AuthMiddlewareFactory {
     return async (req: AuthRequest, res: Response, next: NextFunction) => {
       const strategy = this.registry.get(strategyName);
       if (!strategy) {
-        return res.status(500).json({ error: `Auth strategy '${strategyName}' not found` });
+        res.status(500).json({ error: `Auth strategy '${strategyName}' not found` });
+        return;
       }
       try {
-        const ctx = toHttpContext(req as unknown as Request, res, next);
+        const ctx = createExpressAuthContext(req as unknown as Request, res, next) as unknown as HttpContext;
         if (strategy.logout) {
           await strategy.logout(ctx);
         }
@@ -78,13 +80,22 @@ export class AuthMiddlewareFactory {
     return async (req: AuthRequest, res: Response, next: NextFunction) => {
       const strategy = this.registry.get(strategyName);
       if (!strategy) {
-        return res.status(500).json({ error: `Auth strategy '${strategyName}' not found` });
+        res.status(500).json({ error: `Auth strategy '${strategyName}' not found` });
+        return;
       }
       try {
-        const ctx = toHttpContext(req as unknown as Request, res, next);
+        const ctx = createExpressAuthContext(req as unknown as Request, res, next) as unknown as HttpContext;
         if (strategy.refresh) {
           const result = await strategy.refresh(ctx);
+          res.locals = res.locals || {};
           req.user = result.user;
+          (req as any).auth = {
+            ...(req.auth || {}),
+            result,
+            tokens: result.tokens,
+            session: result.session,
+          };
+          res.locals.auth = result;
           next();
         } else {
           res.status(405).json({ error: `Strategy '${strategyName}' does not support token refresh` });
@@ -99,11 +110,13 @@ export class AuthMiddlewareFactory {
     return async (req: AuthRequest, res: Response, next: NextFunction) => {
       try {
         if (!req.user) {
-          return res.status(401).json({ error: 'User not authenticated' });
+          sendAuthError(new MissingAuthenticatedUserError(), req as unknown as Request, res);
+          return;
         }
         const authorized = await this.checkAuthorization(req.user, roles, req);
         if (!authorized) {
-          return res.status(403).json({ error: 'Access denied' });
+          sendAuthError(new MissingRequiredRoleError(), req as unknown as Request, res);
+          return;
         }
         next();
       } catch (error) {

@@ -3,6 +3,7 @@ import { DIContainer, RouteMetadata, ControllerMetadata, MiddlewareMetadata } fr
 import { RouteBuilder } from '../route-builder';
 import { DecoratorRegistry } from '../../decorators/registry';
 import { MiddlewareFactory } from '../middleware-factory';
+import { RateLimitMiddleware } from '../../middlewares/rate-limit';
 
 // Mock dependencies
 jest.mock('../../decorators/registry');
@@ -262,6 +263,29 @@ describe('RouteBuilder', () => {
       routeBuilder.registerRoute(mockRoute as any);
 
       expect(mockApp.post).toHaveBeenCalledWith('/test', expect.any(Function));
+    });
+
+    it('should add throttle middleware from route options', () => {
+      const throttleMiddleware = jest.fn();
+      const throttleSpy = jest
+        .spyOn(RateLimitMiddleware, 'createThrottle')
+        .mockReturnValue(throttleMiddleware);
+
+      const mockRoute = {
+        method: 'POST',
+        path: '/login',
+        handler: jest.fn(),
+        options: {
+          throttle: { windowMs: 60000, max: 5 }
+        }
+      };
+
+      routeBuilder.registerRoute(mockRoute as any);
+
+      expect(throttleSpy).toHaveBeenCalledWith({ windowMs: 60000, max: 5 });
+      expect(mockApp.post).toHaveBeenCalledWith('/login', throttleMiddleware, expect.any(Function));
+
+      throttleSpy.mockRestore();
     });
   });
 

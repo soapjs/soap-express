@@ -6,6 +6,8 @@ import { DIContainer } from '@soapjs/soap';
 const mockApp = {
   use: jest.fn(),
   get: jest.fn(),
+  set: jest.fn(),
+  disable: jest.fn(),
   post: jest.fn(),
   put: jest.fn(),
   delete: jest.fn(),
@@ -61,6 +63,7 @@ import { DecoratorRegistry } from '../decorators/registry';
 import { RouteBuilder } from '../utils/route-builder';
 import { ErrorHandler } from '../error-handling/error-handler';
 import { AuthRegistry, AuthMiddlewareFactory } from '../auth';
+import { RateLimitMiddleware } from '../middlewares/rate-limit';
 
 describe('SoapExpressApp', () => {
   let app: SoapExpressApp;
@@ -107,6 +110,27 @@ describe('SoapExpressApp', () => {
 
       // Check if AuthMiddlewareFactory is registered in the container
       expect(app.getContainer().has('AuthMiddlewareFactory')).toBe(true);
+    });
+
+    it('should apply security options from constructor', () => {
+      const throttleMiddleware = jest.fn();
+      const throttleSpy = jest
+        .spyOn(RateLimitMiddleware, 'createSecurityThrottle')
+        .mockReturnValue([throttleMiddleware]);
+
+      app = new SoapExpressApp({
+        ...mockOptions,
+        security: {
+          trustProxy: true,
+          throttle: true,
+        },
+      });
+
+      expect(mockApp.disable).toHaveBeenCalledWith('x-powered-by');
+      expect(mockApp.set).toHaveBeenCalledWith('trust proxy', true);
+      expect(mockApp.use).toHaveBeenCalledWith(throttleMiddleware);
+
+      throttleSpy.mockRestore();
     });
   });
 
@@ -245,6 +269,89 @@ describe('SoapExpressApp', () => {
       app.registerMiddleware(mockMiddleware, false);
 
       expect(mockMiddlewareRegistry.add).toHaveBeenCalledWith(mockMiddleware, false);
+    });
+  });
+
+  describe('useSecurity', () => {
+    beforeEach(() => {
+      app = new SoapExpressApp(mockOptions);
+    });
+
+    it('should configure express security middleware and throttling', () => {
+      const throttleMiddleware = jest.fn();
+      const throttleSpy = jest
+        .spyOn(RateLimitMiddleware, 'createSecurityThrottle')
+        .mockReturnValue([throttleMiddleware]);
+
+      app.useSecurity({
+        trustProxy: true,
+        helmet: true,
+        cors: true,
+        throttle: {
+          global: { windowMs: 60000, max: 100 },
+        },
+      });
+
+      expect(mockApp.disable).toHaveBeenCalledWith('x-powered-by');
+      expect(mockApp.set).toHaveBeenCalledWith('trust proxy', true);
+      expect(throttleSpy).toHaveBeenCalledWith({
+        global: { windowMs: 60000, max: 100 },
+      });
+      expect(mockApp.use).toHaveBeenCalledWith(throttleMiddleware);
+
+      throttleSpy.mockRestore();
+    });
+  });
+
+  describe('monitoring helpers', () => {
+    beforeEach(() => {
+      app = new SoapExpressApp(mockOptions);
+    });
+
+    it('should install metrics plugin and expose collector', () => {
+      const usePluginSpy = jest.spyOn(app, 'usePlugin').mockReturnValue(app);
+
+      const result = app.useMetrics({
+        enabled: false,
+        includeSystemMetrics: false,
+        exposeEndpoint: false,
+        metrics: {
+          responseTime: true,
+          requestCount: true,
+          errorRate: true,
+          memoryUsage: true,
+          cpuUsage: true,
+        },
+      });
+
+      expect(result).toBe(app);
+      expect(usePluginSpy).toHaveBeenCalledWith(app.getMetricsPlugin(), expect.objectContaining({
+        exposeEndpoint: false,
+      }));
+      expect(app.getMetricsCollector()).toBeDefined();
+      expect(app.getMetricsData()).toBeDefined();
+
+      usePluginSpy.mockRestore();
+    });
+
+    it('should install memory monitoring plugin and expose monitor data', () => {
+      const usePluginSpy = jest.spyOn(app, 'usePlugin').mockReturnValue(app);
+
+      const result = app.useMemoryMonitoring({
+        enabled: false,
+        exposeEndpoints: false,
+        includeInRequest: false,
+      });
+
+      expect(result).toBe(app);
+      expect(usePluginSpy).toHaveBeenCalledWith(app.getMemoryMonitoringPlugin(), expect.objectContaining({
+        exposeEndpoints: false,
+      }));
+      expect(app.getMemoryMonitor()).toBeDefined();
+      expect(app.getMemoryStats()).toBeDefined();
+      expect(app.getMemorySummary()).toBeDefined();
+
+      usePluginSpy.mockRestore();
     });
   });
 

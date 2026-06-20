@@ -5,6 +5,7 @@ import { Route, RouteGroup, RouteAdditionalOptions, MiddlewareMetadata, RouteMet
 import { DIContainer } from '@soapjs/soap/common';
 import { dispatchResult, resolveUseCase } from './route-dispatch';
 import { buildLegacyValidationMiddlewares } from './validation-middleware';
+import { RateLimitMiddleware } from '../middlewares/rate-limit';
 
 export class RouteBuilder {
   private middlewareFactory: MiddlewareFactory;
@@ -214,7 +215,7 @@ export class RouteBuilder {
   }
 
   // Build middlewares from route options
-  private buildRouteMiddlewares(options?: RouteAdditionalOptions): any[] {
+  private buildRouteMiddlewares(options?: RouteAdditionalOptions & { throttle?: any }): any[] {
     const middlewares: any[] = [];
     
     if (!options) return middlewares;
@@ -229,6 +230,10 @@ export class RouteBuilder {
     if (options.rateLimit) {
       const rateLimit = require('express-rate-limit');
       middlewares.push(rateLimit(options.rateLimit));
+    }
+
+    if (options.throttle) {
+      middlewares.push(RateLimitMiddleware.createThrottle(options.throttle));
     }
 
     // Security middleware

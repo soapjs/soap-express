@@ -74,7 +74,7 @@ jest.mock('express-rate-limit', () => mockRateLimit);
 jest.mock('compression', () => mockCompression);
 
 const mockCorsMiddlewareCreate = jest.fn(() => 'cors-middleware');
-const mockRateLimitMiddlewareCreate = jest.fn(() => 'rate-limit-middleware');
+const mockRateLimitMiddlewareCreate = jest.fn((_options?: any) => 'rate-limit-middleware');
 const mockLoggingMiddlewareCreate = jest.fn(() => 'logging-middleware');
 
 jest.mock('../middlewares/cors', () => ({
@@ -82,7 +82,10 @@ jest.mock('../middlewares/cors', () => ({
 }));
 
 jest.mock('../middlewares/rate-limit', () => ({
-  RateLimitMiddleware: { create: mockRateLimitMiddlewareCreate },
+  RateLimitMiddleware: {
+    create: (options: any) => mockRateLimitMiddlewareCreate(options),
+    createSecurityThrottle: jest.fn(() => ['security-throttle-middleware']),
+  },
 }));
 
 jest.mock('../middlewares/logging', () => ({

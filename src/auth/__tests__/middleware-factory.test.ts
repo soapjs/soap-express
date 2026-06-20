@@ -26,7 +26,8 @@ describe('AuthMiddlewareFactory', () => {
       headers: {},
       cookies: {},
     };
-    mockRes = {
+      mockRes = {
+      locals: {},
       status: jest.fn().mockReturnThis(),
       json: jest.fn(),
       setHeader: jest.fn(),
@@ -73,7 +74,11 @@ describe('AuthMiddlewareFactory', () => {
       await middleware(mockReq as AuthRequest, mockRes as Response, mockNext);
 
       expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Unauthorized' });
+      expect(mockRes.json).toHaveBeenCalledWith({
+        error: 'MissingAuthenticatedUserError',
+        message: 'User is not authenticated',
+        statusCode: 401,
+      });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
@@ -97,8 +102,9 @@ describe('AuthMiddlewareFactory', () => {
 
       expect(mockRes.status).toHaveBeenCalledWith(500);
       expect(mockRes.json).toHaveBeenCalledWith({
-        error: 'Authentication failed',
+        error: 'Error',
         message: 'Strategy error',
+        statusCode: 500,
       });
     });
 
@@ -119,8 +125,9 @@ describe('AuthMiddlewareFactory', () => {
 
       expect(mockRes.status).toHaveBeenCalledWith(401);
       expect(mockRes.json).toHaveBeenCalledWith({
-        error: 'Unauthorized',
+        error: 'MissingTokenError',
         message: 'Access token is required',
+        statusCode: 401,
       });
     });
   });
@@ -184,7 +191,11 @@ describe('AuthMiddlewareFactory', () => {
       await middleware(mockReq as AuthRequest, mockRes as Response, mockNext);
 
       expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'User not authenticated' });
+      expect(mockRes.json).toHaveBeenCalledWith({
+        error: 'MissingAuthenticatedUserError',
+        message: 'User is not authenticated',
+        statusCode: 401,
+      });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
@@ -210,7 +221,11 @@ describe('AuthMiddlewareFactory', () => {
       await middleware(mockReq as AuthRequest, mockRes as Response, mockNext);
 
       expect(mockRes.status).toHaveBeenCalledWith(403);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Access denied' });
+      expect(mockRes.json).toHaveBeenCalledWith({
+        error: 'MissingRequiredRoleError',
+        message: 'User does not have a required role',
+        statusCode: 403,
+      });
       expect(mockNext).not.toHaveBeenCalled();
     });
 

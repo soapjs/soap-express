@@ -46,7 +46,7 @@ export interface SoapExpressOptions {
   logging?: any;
   metrics?: any;
   memoryMonitoring?: any;
-  security?: any;
+  security?: SecurityOptions;
 }
 
 export type RouteHandler = (req: Request, res: Response) => Promise<any> | any;
@@ -81,6 +81,47 @@ export interface RateLimitOptions {
   message?: string | object;
   keyGenerator?: (req: Request) => string;
   skip?: (req: Request) => boolean;
+}
+
+export type ThrottleKeyBy = 'ip' | 'user' | 'apiKey' | ((req: Request) => string);
+
+export interface ThrottleRule {
+  windowMs: number;
+  max: number;
+  message?: string | object;
+  keyBy?: ThrottleKeyBy;
+  skip?: (req: Request) => boolean;
+}
+
+export interface ThrottleOptions extends ThrottleRule {}
+
+export interface SecurityThrottleOptions {
+  global?: ThrottleRule | boolean;
+  routes?: Record<string, ThrottleRule>;
+  groups?: Record<string, ThrottleRule>;
+}
+
+export interface SecurityOptions {
+  /**
+   * Disable the default `X-Powered-By: Express` header. Defaults to true.
+   */
+  disablePoweredBy?: boolean;
+  /**
+   * Passed to `app.set('trust proxy', value)` when defined.
+   */
+  trustProxy?: boolean | string | number | string[];
+  /**
+   * Enables helmet. `true` uses helmet defaults.
+   */
+  helmet?: boolean | Record<string, unknown>;
+  /**
+   * Enables CORS. `true` uses cors defaults.
+   */
+  cors?: boolean | CorsOptions | Record<string, unknown>;
+  /**
+   * Global/path-aware throttling powered by express-rate-limit.
+   */
+  throttle?: SecurityThrottleOptions | ThrottleRule | boolean;
 }
 
 export interface LoggingOptions {

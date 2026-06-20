@@ -1,6 +1,6 @@
 # @soapjs/soap-express
 
-HTTP-focused Express.js integration for the @soapjs/soap framework 0.6.5+ with modern dependency injection, authentication, and advanced routing capabilities.
+HTTP-focused Express.js integration for the @soapjs/soap framework 0.14.0+ with modern dependency injection, authentication adapters, CQRS wiring, and advanced routing capabilities.
 
 ## Table of Contents
 
@@ -41,11 +41,18 @@ HTTP-focused Express.js integration for the @soapjs/soap framework 0.6.5+ with m
 npm install @soapjs/soap-express @soapjs/soap express
 ```
 
+Authentication helpers are exposed through an optional subpath and require
+`@soapjs/soap-auth`:
+
+```bash
+npm install @soapjs/soap-express @soapjs/soap @soapjs/soap-auth express
+```
+
 ## Quick Start
 
 ```typescript
 import { SoapExpressApp, Controller, Get } from '@soapjs/soap-express';
-import { DI, Injectable, Inject } from '@soapjs/soap';
+import { DI, Injectable, Inject } from '@soapjs/soap/common';
 
 // Service with dependency injection
 @Injectable()
@@ -184,12 +191,12 @@ async getUsers(req: Request, res: Response) {
 
 ## Dependency Injection
 
-The framework integrates with the @soapjs/soap 0.6.5+ DI container, providing modern dependency resolution and injection with the new `DI.bind().toClass()` API.
+The framework integrates with the @soapjs/soap 0.14.0+ DI container, providing modern dependency resolution and injection with the `DI.bind().toClass()` API.
 
 ### Using Decorators (Recommended)
 
 ```typescript
-import { Injectable, Inject } from '@soapjs/soap';
+import { Injectable, Inject } from '@soapjs/soap/common';
 
 @Injectable()
 class UserService {
@@ -228,7 +235,7 @@ DI.bind('EmailService').toClass(EmailService);
 ### Using Container Directly
 
 ```typescript
-import { DI } from '@soapjs/soap';
+import { DI } from '@soapjs/soap/common';
 
 @Controller('/api/users')
 class UserController {
@@ -346,6 +353,330 @@ app.registerAuth(soapAuth);
 // }));
 ```
 
+### Express Auth Integration
+
+`@soapjs/soap-express/auth` provides the Express adapter layer for
+`@soapjs/soap-auth`: request/response context, middleware, guards, cookies,
+router helpers and thin recipe wrappers. Strategy implementation stays in
+`@soapjs/soap-auth`.
+
+Public auth exports include:
+
+- `createExpressAuthContext(req, res, next?)`
+- `authMiddleware(auth, strategyName, options?)`
+- `requireRoles(...roles)`
+- `requirePermissions(...permissions)`
+- `createAuthRouter(auth, options?)`
+- `setAccessTokenCookie`, `setRefreshTokenCookie`, `setAuthCookies`,
+  `clearAuthCookies`, `readTokenCookie`
+- `createCookieOAuth2Storage`
+- recipe wrappers: `createExpressJwtAuth`, `createExpressLocalAuth`,
+  `createExpressBasicAuth`, `createExpressApiKeyAuth`,
+  `createExpressOAuth2Auth`, `createExpressHybridOAuth2Auth`
+
+```typescript
+import express from 'express';
+import { SoapAuth } from '@soapjs/soap-auth';
+import {
+  authMiddleware,
+  createAuthRouter,
+  createExpressJwtAuth,
+  requireRoles,
+} from '@soapjs/soap-express/auth';
+
+const auth = new SoapAuth({
+  http: {
+    jwt: createExpressJwtAuth({
+      accessSecret: process.env.JWT_ACCESS_SECRET!,
+      refreshSecret: process.env.JWT_REFRESH_SECRET!,
+      user: {
+        fetchUser: async payload => userRepository.findById((payload as any).sub),
+      },
+    }),
+  },
+});
+
+await auth.init();
+
+const app = express();
+app.use(express.json());
+
+// Ready-made login/logout/refresh/me/verify/revoke routes.
+app.use('/auth', createAuthRouter(auth, {
+  strategy: 'jwt',
+  cookies: {
+    access: { name: 'access_token' },
+    refresh: { name: 'refresh_token' },
+  },
+}));
+
+// Route-level middleware.
+app.get(
+  '/admin',
+  authMiddleware(auth, 'jwt'),
+  requireRoles('admin'),
+  (_req, res) => res.json({ ok: true }),
+);
+```
+
+Default auth errors use a stable JSON shape:
+
+```json
+{
+  "error": "MissingTokenError",
+  "message": "Access token is required",
+  "statusCode": 401
+}
+```
+
+Override it with `errorResponse(error, req)` and successful router responses
+with `successResponse(result, req)`.
+
+`createAuthRouter()` exposes these routes by default:
+
+- `POST /login`
+- `POST /logout`
+- `POST /refresh`
+- `GET /me`
+- `POST /verify`
+- `POST /revoke`
+- `GET /oauth/:provider`
+- `GET /oauth/:provider/callback`
+- `POST /oauth/:provider/link`
+- `DELETE /oauth/:provider/link`
+
+Each route can be disabled or moved through `routes.<name>`.
+
+### OAuth2 and Hybrid OAuth2
+
+OAuth2 recipes can opt into Express-managed state, nonce and PKCE storage.
+The default helper stores transient values in secure HTTP cookies and keeps
+PKCE expiration metadata in memory. `@soapjs/soap-auth@1.0.1` passes the
+current HTTP context into OAuth2 persistence methods, so custom storage can use
+the request/response directly.
+
+```typescript
+import {
+  createAuthRouter,
+  createCookieOAuth2Storage,
+  createExpressOAuth2Auth,
+} from '@soapjs/soap-express/auth';
+
+const github = createExpressOAuth2Auth({
+  provider: 'github',
+  clientId: process.env.GITHUB_CLIENT_ID!,
+  clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+  redirectUri: 'http://localhost:3000/auth/oauth/github/callback',
+  scope: ['read:user', 'user:email'],
+  express: {
+    oauth2: {
+      storage: createCookieOAuth2Storage({
+        stateCookie: 'github_oauth_state',
+        nonceCookie: 'github_oauth_nonce',
+        codeVerifierCookie: 'github_pkce_verifier',
+        cookie: {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+        },
+      }),
+    },
+  },
+});
+
+app.use('/auth', createAuthRouter(auth, {
+  strategy: 'github',
+  redirectUrl: result => `/dashboard?user=${result.user.id}`,
+}));
+```
+
+For production multi-instance deployments, replace cookie-only transient
+storage with session/cache-backed persistence in `soap-auth` config. Cookies
+are fine for local development and simple deployments; shared cache/session
+storage is safer when callbacks can land on a different process.
+
+Provider presets are passed through `soap-auth` recipes. No provider SDK is
+required:
+
+```typescript
+const auth0 = createExpressOAuth2Auth({
+  provider: 'auth0',
+  presetOptions: { domain: process.env.AUTH0_DOMAIN! },
+  clientId: process.env.AUTH0_CLIENT_ID!,
+  clientSecret: process.env.AUTH0_CLIENT_SECRET!,
+  redirectUri: 'https://api.example.com/auth/oauth/auth0/callback',
+  express: { oauth2: { storage: true } },
+});
+
+const keycloak = createExpressOAuth2Auth({
+  provider: 'keycloak',
+  presetOptions: {
+    baseUrl: process.env.KEYCLOAK_BASE_URL!,
+    realm: process.env.KEYCLOAK_REALM!,
+  },
+  clientId: process.env.KEYCLOAK_CLIENT_ID!,
+  clientSecret: process.env.KEYCLOAK_CLIENT_SECRET!,
+  redirectUri: 'https://api.example.com/auth/oauth/keycloak/callback',
+  express: { oauth2: { storage: true } },
+});
+
+const google = createExpressOAuth2Auth({
+  provider: 'google',
+  clientId: process.env.GOOGLE_CLIENT_ID!,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+  redirectUri: 'https://api.example.com/auth/oauth/google/callback',
+  express: { oauth2: { storage: true } },
+});
+
+const facebook = createExpressOAuth2Auth({
+  provider: 'facebook',
+  presetOptions: { version: 'v20.0' },
+  clientId: process.env.FACEBOOK_CLIENT_ID!,
+  clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
+  redirectUri: 'https://api.example.com/auth/oauth/facebook/callback',
+  express: { oauth2: { storage: true } },
+});
+
+const discord = createExpressOAuth2Auth({
+  provider: 'discord',
+  clientId: process.env.DISCORD_CLIENT_ID!,
+  clientSecret: process.env.DISCORD_CLIENT_SECRET!,
+  redirectUri: 'https://api.example.com/auth/oauth/discord/callback',
+  express: { oauth2: { storage: true } },
+});
+```
+
+Hybrid OAuth2 uses the same router start/callback routes and adds account
+link/unlink endpoints:
+
+```typescript
+const hybridGithub = createExpressHybridOAuth2Auth({
+  provider: 'github',
+  clientId: process.env.GITHUB_CLIENT_ID!,
+  clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+  redirectUri: 'https://api.example.com/auth/oauth/github/callback',
+  express: { oauth2: { storage: true } },
+});
+
+app.use('/auth', createAuthRouter(auth, {
+  strategy: 'github',
+  routes: {
+    hybridLink: { path: '/oauth/:provider/link' },
+    hybridUnlink: { path: '/oauth/:provider/link' },
+  },
+}));
+```
+
+Use bearer tokens for machine clients, public APIs and mobile clients that
+manage tokens explicitly. Use HTTP-only cookies for browser apps where you want
+the browser to carry tokens automatically and reduce JavaScript token exposure.
+For cookie auth, keep CSRF protection and SameSite policy explicit.
+
+Cookie helpers use secure defaults:
+
+```typescript
+import { setAuthCookies, clearAuthCookies, readTokenCookie } from '@soapjs/soap-express/auth';
+
+setAuthCookies(res, {
+  accessToken: 'access-token',
+  refreshToken: 'refresh-token',
+}, {
+  access: { name: 'access_token', sameSite: 'lax' },
+  refresh: { name: 'refresh_token', sameSite: 'lax' },
+});
+
+const accessToken = readTokenCookie(req, 'access_token');
+clearAuthCookies(res);
+```
+
+By default cookies are `httpOnly`, `sameSite: 'lax'`, `path: '/'`, and
+`secure: true` in production.
+
+### Common Auth Recipes
+
+Local login plus JWT refresh:
+
+```typescript
+const auth = new SoapAuth({
+  http: {
+    local: createExpressLocalAuth({
+      credentials: {
+        extractCredentials: ctx => ({
+          identifier: ctx.body.email,
+          password: ctx.body.password,
+        }),
+        verifyCredentials: (email, password) => users.verifyPassword(email, password),
+      },
+      jwt: createExpressJwtAuth({
+        accessSecret: process.env.JWT_ACCESS_SECRET!,
+        refreshSecret: process.env.JWT_REFRESH_SECRET!,
+        user: {
+          fetchUser: payload => users.findById((payload as any).sub),
+        },
+      }),
+    }),
+    jwt: createExpressJwtAuth({
+      accessSecret: process.env.JWT_ACCESS_SECRET!,
+      refreshSecret: process.env.JWT_REFRESH_SECRET!,
+      user: {
+        fetchUser: payload => users.findById((payload as any).sub),
+      },
+    }),
+  },
+});
+
+app.use('/auth', createAuthRouter(auth, {
+  strategy: 'local',
+  routes: {
+    login: { path: '/local/login' },
+    refresh: { strategy: 'jwt', path: '/jwt/refresh' },
+  },
+}));
+```
+
+API key for machine endpoints:
+
+```typescript
+const apiKey = createExpressApiKeyAuth({
+  keyType: 'long-term',
+  extractApiKey: ctx => ctx.getHeader('x-api-key') ?? null,
+  retrieveUserByApiKey: key => machines.findByApiKey(key),
+});
+
+app.post(
+  '/jobs',
+  authMiddleware(auth, 'apiKey'),
+  requirePermissions('jobs:write'),
+  createJobHandler,
+);
+```
+
+Custom strategy without rewriting Express integration:
+
+```typescript
+const customStrategy = {
+  name: 'internal',
+  async authenticate(ctx) {
+    const token = ctx.getHeader('x-internal-token');
+    const service = await internalTokens.verify(token);
+    return service ? { user: service } : null;
+  },
+};
+
+app.use('/internal-auth', createAuthRouter(customStrategy));
+app.get('/internal', authMiddleware(customStrategy, 'internal'), handler);
+```
+
+Migrating from manual middleware:
+
+```typescript
+// Before
+app.get('/admin', verifyJwt, requireAdminRole, handler);
+
+// After
+app.get('/admin', authMiddleware(auth, 'jwt'), requireRoles('admin'), handler);
+```
+
 ## CQRS & Domain Events
 
 soap-express ships decorators that register CQRS handlers and domain-event
@@ -357,7 +688,7 @@ consumers in the DI container at decoration time. `wireCqrs` (enabled via
 ```typescript
 import { CommandHandler, QueryHandler } from '@soapjs/soap-express/cqrs';
 import { BaseCommand, BaseQuery } from '@soapjs/soap/cqrs';
-import { Inject } from '@soapjs/soap';
+import { Inject } from '@soapjs/soap/common';
 
 export class CreateUserCommand extends BaseCommand {
   constructor(public readonly email: string) { super(); }
@@ -507,7 +838,7 @@ async createUser() {
 ### Using @soapjs/soap Route System
 
 ```typescript
-import { Route, GetRoute, PostRoute, RouteGroup, RouteRegistry } from '@soapjs/soap';
+import { Route, GetRoute, PostRoute, RouteGroup, RouteRegistry } from '@soapjs/soap/http';
 
 // Individual routes
 const userRoute = new GetRoute('/api/users/:id', {
@@ -545,7 +876,7 @@ app.registerRouteGroup(userGroup);
 ### Route Registry
 
 ```typescript
-import { RouteRegistry } from '@soapjs/soap';
+import { RouteRegistry } from '@soapjs/soap/http';
 
 const registry = app.getRouteRegistry();
 
@@ -951,10 +1282,12 @@ interface RouteAdditionalOptions {
 - WebSocket decorators and controllers
 - Old DI system (`DI.registerClass`, `DI.registerValue`, etc.)
 
-#### New Features in 0.6.5+
+#### New Features in 0.6.x
 - **Modern DI System**: New `DI.bind().toClass()` API
 - **Plugin System**: Extensible plugin architecture
 - **CQRS Decorators**: Command, Query, Event handlers
+- **CQRS Wiring**: `wireCqrs` and `bootstrap({ cqrs: true })`
+- **Auth Adapter Layer**: Express context, middleware, router, cookies, OAuth2 storage and recipe wrappers for `@soapjs/soap-auth`
 - **Auto Documentation**: Automatic API documentation generation
 - **Enhanced Type Safety**: Full TypeScript support
 - **Better Error Handling**: Improved error management
@@ -970,7 +1303,7 @@ DI.registerClass(UserService, 'UserService', { scope: Scope.SINGLETON });
 DI.registerValue('API_KEY', 'your-api-key');
 DI.registerFactory('Database', () => new Database());
 
-// New way (0.6.5+)
+// New way
 DI.bind('UserService').toClass(UserService, { scope: Scope.SINGLETON });
 DI.bind('API_KEY').toValue('your-api-key');
 DI.bind('Database').toFactory(() => new Database());
@@ -993,9 +1326,12 @@ import { SoapExpressApp, MetricsConfig, ConsoleMetricsClient } from '@soapjs/soa
 
 const app = new SoapExpressApp({});
 
-// Enable built-in metrics
+// Enable built-in metrics through the core MetricsPlugin.
 app.useMetrics({
   enabled: true,
+  exposeEndpoint: true,
+  metricsPath: '/metrics',
+  metricsFormat: 'prometheus',
   metrics: {
     responseTime: true,
     requestCount: true,
@@ -1037,6 +1373,7 @@ class PrometheusClient implements MetricsClient {
 
 app.useMetrics({
   enabled: true,
+  exposeEndpoint: true,
   metrics: {
     responseTime: true,
     requestCount: true,
@@ -1167,216 +1504,111 @@ The system detects memory leaks by monitoring consecutive memory growth patterns
 
 ### Security System
 
-The framework includes a comprehensive security system with built-in protection against common web vulnerabilities, implemented without external dependencies.
+`soap-express` exposes a lightweight Express security preset through
+`app.useSecurity()`. It wires existing Express middleware lazily and keeps the
+main package import small.
 
 #### Basic Usage
 
 ```typescript
-import { SoapExpressApp, SecurityConfig } from '@soapjs/soap-express';
+import { SoapExpressApp } from '@soapjs/soap-express';
 
 const app = new SoapExpressApp({});
-
-// Enable security features
 app.useSecurity({
-  enabled: true,
-  headers: {
-    enabled: true,
-    headers: {
-      contentSecurityPolicy: "default-src 'self'",
-      frameOptions: 'DENY',
-      contentTypeOptions: true,
-      xssProtection: '1; mode=block',
-      referrerPolicy: 'strict-origin-when-cross-origin',
-      strictTransportSecurity: 'max-age=31536000; includeSubDomains'
-    }
+  disablePoweredBy: true,
+  trustProxy: true,
+  helmet: true,
+  cors: {
+    origin: ['https://app.example.com'],
+    credentials: true,
   },
-  csrf: {
-    enabled: true,
-    secret: 'your-secret-key-change-in-production',
-    cookieName: '_csrf',
-    cookieOptions: {
-      httpOnly: true,
-      secure: false, // Set to true in production with HTTPS
-      sameSite: 'strict',
-      maxAge: 3600000 // 1 hour
-    }
+  throttle: {
+    global: { windowMs: 60_000, max: 300 },
   },
-  sanitization: {
-    enabled: true,
-    options: {
-      stripHtml: true,
-      escapeSql: true,
-      escapeHtml: true,
-      preventPathTraversal: true,
-      validateFileUploads: true,
-      maxFileSize: 10 * 1024 * 1024, // 10MB
-      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif']
-    }
-  }
 });
 ```
 
-#### Security Headers
-
-The system automatically sets security headers to protect against common attacks:
-
-- **Content Security Policy (CSP)**: Prevents XSS attacks
-- **X-Frame-Options**: Prevents clickjacking
-- **X-Content-Type-Options**: Prevents MIME type sniffing
-- **X-XSS-Protection**: Enables browser XSS filtering
-- **Referrer-Policy**: Controls referrer information
-- **Strict-Transport-Security (HSTS)**: Enforces HTTPS
-- **Permissions-Policy**: Controls browser features
-- **Cross-Origin Policies**: Controls cross-origin requests
-
-#### CSRF Protection
-
-Built-in CSRF protection without external dependencies:
+The same options can be passed to the constructor:
 
 ```typescript
-// CSRF token is automatically generated and validated
-app.getApp().post('/api/users', (req, res) => {
-  // CSRF token is available in res.locals.csrfToken
-  res.json({ csrfToken: res.locals.csrfToken });
-});
-
-// Get CSRF token endpoint
-app.getApp().get('/api/csrf-token', (req, res) => {
-  const securityMiddleware = app.getSecurityMiddleware();
-  const token = securityMiddleware!.getCSRFMiddleware().generateToken();
-  res.json({ csrfToken: token });
+const app = new SoapExpressApp({
+  security: {
+    disablePoweredBy: true,
+    helmet: true,
+    throttle: true,
+  },
 });
 ```
 
-#### Input Sanitization
+#### Request Throttling
 
-Automatic sanitization of all request data:
+Throttle can be configured globally, by route pattern, or by path group.
+Route-level options have the highest precision and are useful for login,
+refresh, OAuth callbacks and expensive business commands.
 
 ```typescript
-// HTML sanitization
-app.getApp().post('/api/content', (req, res) => {
-  // req.body is automatically sanitized
-  // <script> tags are stripped, HTML entities are escaped
-  res.json({ content: req.body.content });
-});
-
-// Custom sanitizers
 app.useSecurity({
-  sanitization: {
-    enabled: true,
-    options: {
-      stripHtml: true,
-      escapeHtml: true,
-      preventPathTraversal: true
+  throttle: {
+    global: { windowMs: 60_000, max: 300 },
+    routes: {
+      'POST /auth/login': {
+        windowMs: 60_000,
+        max: 5,
+        keyBy: req => req.body?.email ?? req.ip,
+      },
+      'POST /auth/refresh': {
+        windowMs: 60_000,
+        max: 20,
+        keyBy: 'user',
+      },
+      'GET /auth/oauth/:provider/callback': {
+        windowMs: 60_000,
+        max: 30,
+      },
     },
-    customSanitizers: {
-      'email': (value) => value.toLowerCase().trim(),
-      'phone': (value) => value.replace(/[^\d+\-\(\)\s]/g, ''),
-      'username': (value) => value.replace(/[^a-zA-Z0-9_-]/g, '')
-    }
-  }
+    groups: {
+      '/api/admin/*': { windowMs: 60_000, max: 60 },
+      '/api/public/*': { windowMs: 60_000, max: 1000 },
+    },
+  },
 });
 ```
 
-#### Security Presets
-
-Pre-configured security levels:
+Routes can also opt in directly through route options:
 
 ```typescript
-import { securityPresets } from '@soapjs/soap-express';
-
-// Strict security for production
-app.useSecurity({
-  headers: securityPresets.strict,
-  csrf: { enabled: true, secret: 'production-secret' },
-  sanitization: { enabled: true, options: { stripHtml: true } }
-});
-
-// Balanced security for development
-app.useSecurity({
-  headers: securityPresets.balanced,
-  csrf: { enabled: false },
-  sanitization: { enabled: true, options: { stripHtml: false } }
-});
-
-// Minimal security
-app.useSecurity({
-  headers: securityPresets.minimal,
-  csrf: { enabled: false },
-  sanitization: { enabled: false }
-});
+@Post('/login', {
+  throttle: {
+    windowMs: 60_000,
+    max: 5,
+    keyBy: req => req.body?.email ?? req.ip,
+  },
+})
+async login(req: Request, res: Response) {
+  // ...
+}
 ```
 
-#### Security Monitoring
+`keyBy` supports:
 
-Track security violations and get statistics:
+- `'ip'` (default)
+- `'user'` (`req.user.id`, falling back to IP)
+- `'apiKey'` (`x-api-key`, falling back to IP)
+- a custom `(req) => string` function
 
-```typescript
-const securityMiddleware = app.getSecurityMiddleware();
+#### Scope
 
-// Get security violations
-const violations = securityMiddleware.getSecurityViolations();
+`useSecurity()` currently covers:
 
-// Get security statistics
-const stats = securityMiddleware.getSecurityStats();
+- `disablePoweredBy`
+- `trustProxy`
+- `helmet`
+- `cors`
+- request throttling/rate limiting
 
-// Clear violations
-securityMiddleware.clearViolations();
-```
-
-#### Security Endpoints
-
-Built-in security endpoints for monitoring:
-
-```typescript
-import { createSecurityEndpoints } from '@soapjs/soap-express';
-
-const securityMiddleware = app.getSecurityMiddleware();
-const endpoints = createSecurityEndpoints(securityMiddleware);
-
-// Security status endpoint
-app.getApp().get('/security/status', endpoints.status);
-
-// CSRF token endpoint
-app.getApp().get('/security/csrf-token', endpoints.csrfToken);
-
-// Security violations endpoint
-app.getApp().get('/security/violations', endpoints.violations);
-```
-
-#### File Upload Security
-
-Automatic validation of file uploads:
-
-```typescript
-app.useSecurity({
-  sanitization: {
-    enabled: true,
-    options: {
-      validateFileUploads: true,
-      maxFileSize: 10 * 1024 * 1024, // 10MB
-      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'application/pdf']
-    }
-  }
-});
-
-// File uploads are automatically validated
-app.getApp().post('/api/upload', (req, res) => {
-  // req.files is validated and sanitized
-  res.json({ files: req.files });
-});
-```
-
-#### Security Features
-
-- **No External Dependencies**: Built using only Node.js built-in modules
-- **Automatic Protection**: All requests are automatically protected
-- **Configurable**: Fine-grained control over security features
-- **Monitoring**: Track security violations and statistics
-- **Presets**: Pre-configured security levels for different environments
-- **Custom Sanitizers**: Add your own sanitization logic
-- **File Upload Validation**: Automatic validation of uploaded files
-- **CSRF Protection**: Built-in CSRF token generation and validation
+It intentionally does not implement automatic CSRF protection, input
+sanitization or session storage. Those depend on application auth/session
+choices and should be wired explicitly.
 
 ### WebSocket Support
 

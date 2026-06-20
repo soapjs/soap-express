@@ -15,6 +15,7 @@
     "^@soapjs/soap/cqrs$":        "<rootDir>/node_modules/@soapjs/soap/build/cqrs",
     "^@soapjs/soap/domain$":      "<rootDir>/node_modules/@soapjs/soap/build/domain",
     "^@soapjs/soap/data$":        "<rootDir>/node_modules/@soapjs/soap/build/data",
-    "^@soapjs/soap/config$":      "<rootDir>/node_modules/@soapjs/soap/build/config"
+    "^@soapjs/soap/config$":      "<rootDir>/node_modules/@soapjs/soap/build/config",
+    "^@soapjs/soap-auth/recipes$": "<rootDir>/node_modules/@soapjs/soap-auth/build/recipes"
   }
 }

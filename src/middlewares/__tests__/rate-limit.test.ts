@@ -83,6 +83,55 @@ describe('RateLimitMiddleware', () => {
     });
   });
 
+  describe('createSecurityThrottle', () => {
+    it('should create global, group, and route throttle middlewares', () => {
+      const middlewares = RateLimitMiddleware.createSecurityThrottle({
+        global: { windowMs: 60000, max: 300 },
+        groups: {
+          '/api/admin/*': { windowMs: 60000, max: 60 },
+        },
+        routes: {
+          'POST /auth/login': { windowMs: 60000, max: 5 },
+        },
+      });
+
+      expect(middlewares).toHaveLength(3);
+      middlewares.forEach(middleware => {
+        expect(typeof middleware).toBe('function');
+      });
+    });
+
+    it('should skip route and group limiters when request does not match', () => {
+      const middlewares = RateLimitMiddleware.createSecurityThrottle({
+        groups: {
+          '/api/admin/*': { windowMs: 60000, max: 60 },
+        },
+        routes: {
+          'POST /auth/login': { windowMs: 60000, max: 5 },
+        },
+      });
+
+      const req = {
+        method: 'GET',
+        path: '/public',
+        url: '/public',
+      } as any;
+      const res = {} as any;
+      const next = jest.fn();
+
+      middlewares.forEach(middleware => middleware(req, res, next));
+
+      expect(next).toHaveBeenCalledTimes(2);
+    });
+
+    it('should support shorthand boolean global throttle', () => {
+      const middlewares = RateLimitMiddleware.createSecurityThrottle(true);
+
+      expect(middlewares).toHaveLength(1);
+      expect(typeof middlewares[0]).toBe('function');
+    });
+  });
+
   describe('createStrict', () => {
     it('should create strict rate limit middleware', () => {
       const middleware = RateLimitMiddleware.createStrict();

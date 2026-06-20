@@ -66,6 +66,9 @@ export {
   HealthCheckPlugin,
   PingPlugin,
   MetricsPlugin,
+  MemoryMonitoringPlugin,
+  ConsoleMetricsClient,
+  createMemoryConfig,
 } from '@soapjs/soap/http';
 
 export type {
@@ -95,6 +98,21 @@ export type {
   // Validation
   ValidationMiddleware,
   ValidationResult,
+
+  // Metrics and memory monitoring
+  MetricsClient,
+  MetricsCollector,
+  MetricsConfig,
+  MetricsData,
+  MetricsPluginOptions,
+  MemoryInfo,
+  MemoryLeakInfo,
+  MemoryMonitor,
+  MemoryMonitoringConfig,
+  MemoryMonitoringPluginOptions,
+  MemorySnapshot,
+  MemoryStats,
+  MemoryThreshold,
 } from '@soapjs/soap/http';
 
 export {

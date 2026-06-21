@@ -50,7 +50,7 @@ export interface CqrsConfig {
 
   /**
    * Provide a pre-constructed {@link DomainEventBus} adapter (e.g.
-   * `KafkaDomainEventBus` from `@soapjs/soap-node-kafka`). When omitted,
+   * `KafkaDomainEventBus` from `@soapjs/soap-kafka`). When omitted,
    * {@link wireCqrs} falls back to an existing container binding under
    * `eventBusToken`, and finally to a fresh {@link InMemoryDomainEventBus}.
    *

@@ -2,6 +2,13 @@
 
 HTTP-focused Express.js integration for the @soapjs/soap framework 0.14.0+ with modern dependency injection, authentication adapters, CQRS wiring, and advanced routing capabilities.
 
+Version `1.0.0` is the stable Express runtime line for the SoapJS 0.14.0+
+package set.
+
+Use `@soapjs/cli` to scaffold new SoapJS applications, resources, controllers,
+contracts, auth, storage, events, OpenAPI documentation, and observability setup.
+`@soapjs/soap-express` is the HTTP runtime those generated Express apps target.
+
 ## Table of Contents
 
 - [Features](#features)
@@ -39,6 +46,13 @@ HTTP-focused Express.js integration for the @soapjs/soap framework 0.14.0+ with 
 
 ```bash
 npm install @soapjs/soap-express @soapjs/soap express
+```
+
+For new projects, start with the CLI:
+
+```bash
+npm install -g @soapjs/cli
+soap new my-api
 ```
 
 Authentication helpers are exposed through an optional subpath and require
@@ -1277,7 +1291,7 @@ interface RouteAdditionalOptions {
 ### From Previous Versions
 
 #### Removed Features
-- WebSocket support (moved to @soapjs/soap-node-socket)
+- WebSocket support (moved to `@soapjs/soap-socket`)
 - Socket.IO integration
 - WebSocket decorators and controllers
 - Old DI system (`DI.registerClass`, `DI.registerValue`, etc.)
@@ -1294,6 +1308,45 @@ interface RouteAdditionalOptions {
 - **HTTP-only Focus**: Better performance
 - **Auth Decorators**: Built-in authentication
 - **Advanced Routing**: @soapjs/soap Route system integration
+
+### Official Companion Packages
+
+SoapJS 0.14.0+ keeps framework concerns in focused packages. `soap-express`
+accepts their HTTP plugins and adapters through the core `HttpPlugin`,
+middleware, CQRS, and drainable interfaces:
+
+- `@soapjs/cli` — project and resource scaffolding
+- `@soapjs/soap-auth` — framework-neutral auth strategies and recipes
+- `@soapjs/soap-openapi` — `DocumentationPlugin` and OpenAPI decorators
+- `@soapjs/soap-otel` — `TracingPlugin` and request tracing middleware
+- `@soapjs/soap-zod` — Zod 4 request contracts for validation and OpenAPI
+- `@soapjs/soap-mongo` — MongoDB data source/session/transaction adapters
+- `@soapjs/soap-sql` — SQL data source/session/transaction adapters
+- `@soapjs/soap-kafka` — Kafka event bus and domain event bus adapters
+- `@soapjs/soap-socket` — Socket.IO/WebSocket support outside the HTTP package
+
+Example:
+
+```typescript
+import { bootstrap } from '@soapjs/soap-express';
+import { DocumentationPlugin } from '@soapjs/soap-openapi';
+import { TracingPlugin } from '@soapjs/soap-otel';
+
+await bootstrap({
+  controllers: [UserController],
+  plugins: [
+    {
+      plugin: new DocumentationPlugin(),
+      options: {
+        info: { title: 'Users API', version: '1.0.0' },
+        openApiPath: '/openapi.json',
+        interactivePath: '/docs',
+      },
+    },
+    new TracingPlugin(),
+  ],
+});
+```
 
 ### DI System Migration
 
@@ -1615,7 +1668,7 @@ choices and should be wired explicitly.
 For WebSocket functionality, use the separate package:
 
 ```bash
-npm install @soapjs/soap-node-socket
+npm install @soapjs/soap-socket
 ```
 
 This provides Socket.IO and WebSocket support with the same clean architecture.

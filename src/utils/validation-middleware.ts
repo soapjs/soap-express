@@ -3,7 +3,7 @@ import type { RouteAdditionalOptions } from '@soapjs/soap/http';
 /**
  * Legacy Joi-style `validation.request.schema.validate()` only.
  * Zod and other adapters should attach middleware via `options.middlewares.pre`
- * (see `@soapjs/soap-contract-zod` `bodyContract`).
+ * (see `@soapjs/soap-zod` `bodyContract`).
  */
 export function buildLegacyValidationMiddlewares(options?: RouteAdditionalOptions): any[] {
   if (!options) return [];

@@ -773,7 +773,7 @@ class UserController {
   @CallUseCase(GetUsersUseCase)
   @RouteIO({
     from: (req: Request) => ({ page: req.query.page, limit: req.query.limit }),
-    to: (res: Response, result: any) => {
+    to: (result: any, res: Response) => {
       if (result.isSuccess()) {
         res.json({ success: true, data: result.content });
       } else {
@@ -803,7 +803,7 @@ import { RouteIO, ExpressIO } from '@soapjs/soap-express';
     email: req.body.email,
     // Transform request data
   }),
-  to: (res: Response, result: any) => {
+  to: (result: any, res: Response) => {
     res.json({
       success: true,
       data: result,
@@ -1138,7 +1138,7 @@ class UserController {
       name: req.body.name,
       email: req.body.email.toLowerCase().trim()
     }),
-    to: (res: Response, result: any) => {
+    to: (result: any, res: Response) => {
       if (result.isSuccess()) {
         res.status(201).json({
           success: true,

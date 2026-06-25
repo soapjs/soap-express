@@ -63,7 +63,7 @@ describe('RouteIO Decorator', () => {
   describe('with mapping functions', () => {
     it('should create ExpressIO from mapping functions', () => {
       const fromFn = (req: Request) => ({ body: req.body });
-      const toFn = (res: Response, result: any) => res.json({ data: result });
+      const toFn = (result: any, res: Response) => res.json({ data: result });
 
       @Controller('/api')
       class TestController {
@@ -76,6 +76,27 @@ describe('RouteIO Decorator', () => {
       expect(metadata?.routeIO).toBeDefined();
       expect(typeof metadata?.routeIO?.from).toBe('function');
       expect(typeof metadata?.routeIO?.to).toBe('function');
+    });
+
+    it('should call inline to mapping with result before response', () => {
+      const fromFn = (req: Request) => ({ body: req.body });
+      const toFn = jest.fn();
+
+      @Controller('/api')
+      class TestController {
+        @RouteIO({ from: fromFn, to: toFn })
+        @Get('/test')
+        testMethod() {}
+      }
+
+      const metadata = DecoratorRegistry.getRoute(TestController, 'testMethod');
+      const result = { test: 'result' };
+      const mockRes = { json: jest.fn() } as any;
+
+      metadata?.routeIO?.to(result, mockRes);
+
+      expect(toFn).toHaveBeenCalledWith(result, mockRes);
+      expect(toFn).not.toHaveBeenCalledWith(mockRes, result);
     });
 
     it('should handle only from function', () => {
@@ -98,7 +119,7 @@ describe('RouteIO Decorator', () => {
     });
 
     it('should handle only to function', () => {
-      const toFn = (res: Response, result: any) => res.json({ data: result });
+      const toFn = jest.fn((result: any, res: Response) => res.json({ data: result }));
 
       @Controller('/api')
       class TestController {
@@ -112,8 +133,11 @@ describe('RouteIO Decorator', () => {
       
       // Test the created IO
       const mockRes = { json: jest.fn() } as any;
-      metadata?.routeIO?.to({ test: 'result' }, mockRes);
-      expect(mockRes.json).toHaveBeenCalledWith({ data: { test: 'result' } });
+      const result = { test: 'result' };
+      metadata?.routeIO?.to(result, mockRes);
+
+      expect(toFn).toHaveBeenCalledWith(result, mockRes);
+      expect(mockRes.json).toHaveBeenCalledWith({ data: result });
     });
 
     it('should default to req.body for from when not provided', () => {

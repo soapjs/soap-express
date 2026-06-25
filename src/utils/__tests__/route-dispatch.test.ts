@@ -1,6 +1,7 @@
 import { dispatchResult, resolveUseCase } from '../route-dispatch';
 import { Result, Failure } from '@soapjs/soap';
 import { ResultMapper } from '../../result-mapper';
+import { ExpressIO } from '../../types';
 
 describe('route-dispatch', () => {
   let res: any;
@@ -29,6 +30,19 @@ describe('route-dispatch', () => {
       dispatchResult(ok, res, io);
 
       expect(io.to).toHaveBeenCalledWith(ok, res);
+    });
+
+    it('passes result before response to a full ExpressIO object', () => {
+      const io: ExpressIO = {
+        from: jest.fn(),
+        to: jest.fn()
+      };
+      const ok = Result.withSuccess({ a: 1 });
+
+      dispatchResult(ok, res, io);
+
+      expect(io.to).toHaveBeenCalledWith(ok, res);
+      expect(io.to).not.toHaveBeenCalledWith(res, ok);
     });
 
     it('uses ResultMapper for a successful result without a RouteIO', () => {
